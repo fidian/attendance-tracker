@@ -1,0 +1,29 @@
+{
+    "compilerOptions": {
+        "target": "es2020",
+        "useDefineForClassFields": false,
+        "module": "esnext",
+        "lib": ["ES2020", "DOM", "DOM.Iterable"],
+        "skipLibCheck": true,
+        "types": ["node", "vite/client"],
+
+        /* Bundler mode */
+        "moduleResolution": "bundler",
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "noEmit": true,
+
+        /* Linting */
+        "strict": true,
+        "allowUnreachableCode": false,
+        "alwaysStrict": true,
+        "noImplicitAny": true,
+        "noImplicitOverride": true,
+        "noImplicitReturns": true,
+        "noImplicitThis": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true
+    },
+    "include": ["src", "site", "vite.config.ts", "vitest.config.ts"]
+}

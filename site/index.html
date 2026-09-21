@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+        />
+        <meta
+            name="description"
+            content="Mark youth group attendance in two taps, online or off."
+        />
+        <meta name="theme-color" content="#1b6b4a" />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <title>Attendance</title>
+        <script src="main.ts" type="module"></script>
+        <style>
+            :root {
+                --accent-color: #1b6b4a;
+                --accent-fg-color: #ffffff;
+                --bg-color: #ffffff;
+                --border-color: #b0b0b0;
+                --button-bg-color: #f0f0f0;
+                --control-border: 2px solid #b0b0b0;
+                --danger-color: #b00020;
+                --fg-color: #101010;
+                --link-color: #14563c;
+                --notice-bg-color: #fff4d6;
+                --toast-bg-color: #e0ffe0;
+            }
+
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --accent-color: #2e9c6e;
+                    --accent-fg-color: #001a10;
+                    --bg-color: #101010;
+                    --border-color: #505050;
+                    --button-bg-color: #202020;
+                    --control-border: 2px solid #505050;
+                    --danger-color: #ff6f6f;
+                    --fg-color: #f0f0f0;
+                    --link-color: #6fdcaa;
+                    --notice-bg-color: #3a3218;
+                    --toast-bg-color: #16301f;
+                }
+
+                input {
+                    color-scheme: dark;
+                }
+            }
+
+            html {
+                height: 100%;
+            }
+
+            body {
+                height: 100%;
+                margin: 0;
+                overflow: hidden;
+                font-family: system-ui, sans-serif;
+                line-height: 1.4;
+                color: var(--fg-color);
+                background-color: var(--bg-color);
+                /* Stop iOS from bouncing the whole app shell around. */
+                overscroll-behavior: none;
+            }
+        </style>
+    </head>
+    <body></body>
+</html>

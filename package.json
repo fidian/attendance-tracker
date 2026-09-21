@@ -1,0 +1,46 @@
+{
+    "name": "attendance-tracker",
+    "version": "1.0.0",
+    "private": true,
+    "description": "One-tap youth group attendance, posted to a Google Form.",
+    "keywords": [
+        "attendance",
+        "google-forms",
+        "pwa",
+        "fudgel",
+        "scouts"
+    ],
+    "homepage": "https://fidian.github.io/attendance-tracker/",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/fidian/attendance-tracker.git"
+    },
+    "bugs": {
+        "url": "https://github.com/fidian/attendance-tracker/issues"
+    },
+    "author": "Tyler Akins <fidian@rumkin.com>",
+    "license": "MIT",
+    "type": "module",
+    "scripts": {
+        "build": "npm run typecheck && vite build",
+        "generate-pwa-assets": "pwa-assets-generator",
+        "preview": "vite preview",
+        "reinstall": "rm -rf node_modules package-lock.json && npm install",
+        "start": "vite",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "typecheck": "tsc"
+    },
+    "dependencies": {
+        "@tofandel/qrcode-svg": "^1.2.0",
+        "@undecaf/zbar-wasm": "^0.11.0",
+        "fudgel": "^4.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^26.6.2",
+        "@vite-pwa/assets-generator": "^1.0.2",
+        "typescript": "^5.9.3",
+        "vite": "^7.1.7",
+        "vitest": "^3.2.4"
+    }
+}
