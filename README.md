@@ -107,7 +107,7 @@ Deploying
 ---------
 
 `.github/workflows/deploy.yml` type checks, tests, and builds on every push
-and pull request, and publishes to GitHub Pages from `main`. It needs Pages
+and pull request, and publishes to GitHub Pages from `master`. It needs Pages
 set to **GitHub Actions** as its source, under Settings -> Pages.
 
 The site lives in a subfolder, so `base` in `vite.config.ts` is
@@ -117,6 +117,8 @@ edit.
 
 Developing
 ----------
+
+`AGENTS.md` describes the conventions for working on this app.
 
 ```bash
 npm install

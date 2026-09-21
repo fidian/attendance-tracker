@@ -2,12 +2,12 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
 # Let a queued deploy wait for the one in flight rather than cancelling it, so
-# a finished run always matches the newest commit on main.
+# a finished run always matches the newest commit on master.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -40,13 +40,13 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v4
         # A pull request gets the checks but never the deploy.
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
         with:
           path: dist
 
   deploy:
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       pages: write
