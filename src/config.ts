@@ -13,3 +13,6 @@ export const STORAGE_KEYS = ['formConfig', 'recentNames'];
  * an already-configured app; the in-app scanner reads the same thing.
  */
 export const CONFIG_HASH_KEY = 'config';
+
+/** Where the instructions live, linked from the settings screen. */
+export const PROJECT_URL = 'https://github.com/fidian/attendance-tracker';

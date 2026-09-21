@@ -4,7 +4,7 @@
  */
 import { emit } from 'fudgel';
 import { di } from '../di';
-import { STORAGE_KEYS } from '../config';
+import { PROJECT_URL, STORAGE_KEYS } from '../config';
 import { ConfigService, parseFormUrl } from '../services/config.service';
 import { storage } from '../services/local-storage.service';
 
@@ -16,6 +16,7 @@ export class ConfigScreenComponent {
     confirming = false;
     error = '';
     formId = '';
+    projectUrl = PROJECT_URL;
     /** Set when the share view opens; a no-argument call binds only once. */
     shareLink = '';
     nameEntry = '';

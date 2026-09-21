@@ -133,6 +133,16 @@ component(
                 height: auto;
             }
 
+            .about {
+                margin-top: 1.6em;
+                font-size: 0.9em;
+                text-align: center;
+            }
+
+            a {
+                color: var(--link-color);
+            }
+
             .share-url {
                 word-break: break-all;
                 font-size: 0.85em;
@@ -219,6 +229,17 @@ component(
                             </button>
                         </div>
                     </div>
+
+                    <p class="about">
+                        <!-- Opens away from the app: an installed PWA has no
+                             back button to return with. -->
+                        <a
+                            href="{{ projectUrl }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >Full instructions and source</a
+                        >
+                    </p>
                 </div>
 
                 <div *if="view === 'share'">
