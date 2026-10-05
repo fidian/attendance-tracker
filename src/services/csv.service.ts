@@ -136,6 +136,22 @@ export class CsvService {
     }
 
     /**
+     * Google serves a published sheet from a cache keyed on the exact
+     * address, so repeating a request can keep returning one stale copy for
+     * as long as it lives; `cache: 'no-store'` does not reach it, because the
+     * copy is theirs and not the browser's. A unique parameter at least asks
+     * for an address nothing has pinned yet.
+     *
+     * It is not a guarantee. After an edit, Google's edges disagree with each
+     * other for a few minutes -- four requests in a row were observed
+     * returning old, old, new, old -- so importing again shortly afterwards
+     * is the only cure, and the README says so.
+     */
+    private _uncached(url: string) {
+        return `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
+    }
+
+    /**
      * Published-to-web sheets answer with permissive CORS headers, which is
      * what lets a page with no backend read one at all. A sheet that is
      * merely shared by link does not, and fails here.
@@ -144,7 +160,9 @@ export class CsvService {
         let response: Response;
 
         try {
-            response = await fetch(url, { redirect: 'follow' });
+            response = await fetch(this._uncached(url), {
+                redirect: 'follow',
+            });
         } catch (_ignore) {
             throw new Error(
                 'Could not read that address. It has to be a sheet published to the web, not just shared by link.'

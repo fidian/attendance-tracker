@@ -156,6 +156,45 @@ describe('CsvService', () => {
             vi.unstubAllGlobals();
         });
 
+        /**
+         * Google caches a published sheet by URL and can serve an edit
+         * minutes late. Importing again has to actually re-read it.
+         */
+        it('asks for an address nothing has cached yet', async () => {
+            const fetchMock = vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                text: () => Promise.resolve(SHEET),
+            });
+            vi.stubGlobal('fetch', fetchMock);
+
+            await csv.fetchPeople('https://example.com/pub?output=csv', LABELS);
+            const first = String(fetchMock.mock.calls[0][0]);
+
+            expect(first).toMatch(/[?&]_=\d+/);
+            expect(first.startsWith('https://example.com/pub?output=csv&'))
+                .toBe(true);
+
+            vi.unstubAllGlobals();
+        });
+
+        it('adds the cache-buster to an address with no query of its own', async () => {
+            const fetchMock = vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                text: () => Promise.resolve(SHEET),
+            });
+            vi.stubGlobal('fetch', fetchMock);
+
+            await csv.fetchPeople('https://example.com/roster.csv', LABELS);
+
+            expect(String(fetchMock.mock.calls[0][0])).toMatch(
+                /^https:\/\/example\.com\/roster\.csv\?_=\d+$/
+            );
+
+            vi.unstubAllGlobals();
+        });
+
         it('explains a CORS failure in terms of publishing', async () => {
             vi.stubGlobal(
                 'fetch',

@@ -118,10 +118,100 @@ second spreadsheet.
 3. Paste it into **Roster sheet** on the settings screen and press **Import
    roster now**. Importing replaces the roster outright.
 
+After you *edit* a published sheet, Google takes a few minutes to catch up,
+and during that window its servers disagree with each other -- four requests
+in a row were seen returning old, old, new, old. The app asks for an address
+nothing has cached, which helps, but it cannot force the issue. If an import
+brings back what you just changed away from, wait a minute and import again.
+
 A published sheet is readable by anyone with its address, so put names in it
 only if that is acceptable. Nothing forces you to use one: **+** on the main
 screen adds people by hand, and a device that never imports anything works
 fine.
+
+A worked example
+----------------
+
+A complete, live setup you can look at before building your own. Everything
+below is real and was checked end to end against this app.
+
+**[The sample Google Drive folder][ex-folder]** holds the form and the sheet.
+
+### The form
+
+**[Sample Attendance Form][ex-form]** has three short-answer questions, titled
+*First Name*, *Last Name* and *Department*.
+
+Its **pre-filled link** is where the app gets everything:
+
+```
+https://docs.google.com/forms/d/e/1FAIpQLSdKYULZ6oR5x_H4ma8va_Tl6PgGdRYZfT66sIPS9_qZx45KxQ/viewform?usp=pp_url&entry.1459473829=First&entry.1364413192=Last&entry.346162006=Dept
+```
+
+Paste that into the setup screen and it reports **3 questions found**:
+
+| What the app calls it | Entry id |
+| --- | --- |
+| `First` | `entry.1459473829` |
+| `Last` | `entry.1364413192` |
+| `Dept` | `entry.346162006` |
+
+**Read that table carefully.** The questions are *titled* "First Name", "Last
+Name" and "Department", but the app calls them `First`, `Last` and `Dept` --
+because those are the words typed into the boxes when the pre-filled link was
+made. The app never sees a question's real title. Whatever you type becomes
+the name it uses, and it is the name the sheet's column headings have to
+match. Short ones are easier to live with.
+
+### The roster sheet
+
+**[The roster spreadsheet][ex-roster]**, published to the web as
+**[CSV][ex-csv]**, holds 25 people:
+
+| Display | First | Last | Dept |
+| --- | --- | --- | --- |
+| Harry P. (Auror Office) | Harry | Potter | Auror Office |
+| Hermione G. (Magical Law) | Hermione | Granger | Magical Law |
+| Ron W. (Auror Office) | Ron | Weasley | Auror Office |
+
+`Display` is the tile text and is never submitted. The other three headings
+match the names from the table above exactly -- `First`, not `First Name`.
+Get that wrong and the import still appears to work, but every person arrives
+with no values and the app warns that it ignored your columns and has no
+column for its questions.
+
+Keep `Display` short. Two columns on a phone is about 14 characters before it
+is cut off with an ellipsis, so "Harry P." beats "Harry P. (Auror Office)" if
+you have long department names.
+
+### What a tap sends
+
+Importing gives **Imported 25 people.** with no warnings. Tapping
+*Harry P. (Auror Office)* posts:
+
+```
+entry.1459473829=Harry
+entry.1364413192=Potter
+entry.346162006=Auror+Office
+```
+
+Google adds the timestamp. The tile lights up, and fades when the post lands.
+
+### Filtering it
+
+Typing in the box above the list searches the tile text *and* every field
+value, which is why it finds people the tiles do not name:
+
+| Typed | Finds |
+| --- | --- |
+| `auror` | the 5 people in Auror Office |
+| `weasley` | Arthur, Percy and Ron -- whose tiles only say "W." |
+| `herm` | Hermione |
+
+[ex-folder]: https://drive.google.com/drive/folders/1taK2hfqpiG4MIlEPoz2rT-TslI09rp-z
+[ex-form]: https://docs.google.com/forms/d/e/1FAIpQLSdKYULZ6oR5x_H4ma8va_Tl6PgGdRYZfT66sIPS9_qZx45KxQ/viewform
+[ex-roster]: https://docs.google.com/spreadsheets/d/1S0Fbb08PJLgSbDHdXHSMvyIi2T5i0cc3GKdtgGgZyEg/
+[ex-csv]: https://docs.google.com/spreadsheets/d/e/2PACX-1vScr9Gd9m7pvXiixI9q0Bx8A6__tg1eJaZycPFEvufe413dEyhATLrFM5TMyiT-eNrHKXI549b1KFL0/pub?output=csv
 
 Setting up a device
 -------------------

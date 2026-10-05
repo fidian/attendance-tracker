@@ -70,7 +70,17 @@ npm run preview  # serve the build
   Publishing is what makes Google send CORS headers; shared-by-link does not,
   and a browser cannot read it. `CsvService` takes the field labels as an
   argument rather than reading the saved settings, because the setup screen
-  imports before Save has been pressed.
+  imports before Save has been pressed. The unique parameter it adds to the
+  address is not decoration: Google caches a published sheet per URL, out of
+  the browser's reach, and repeating a request can pin one stale copy. It is
+  still only a mitigation -- after an edit their servers disagree with each
+  other for minutes.
+- **The worked example in `README.md` is checked by `src/doc.test.ts`.** It
+  states the same facts three times over -- the pre-filled link, the table of
+  what the app makes of it, and the sheet's headings -- and the test parses
+  the link with `parseFormUrl` and compares. It deliberately does not fetch
+  the live sheet: a test that depends on somebody's spreadsheet fails for
+  reasons that have nothing to do with this repository.
 - **The app has to work with no sheet at all.** `+` prompts for every
   question, so a group that never publishes anything can still use it.
 - **A controller that holds logic lives in its own file**, apart from the
