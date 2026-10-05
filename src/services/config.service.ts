@@ -2,39 +2,62 @@ import { CONFIG_HASH_KEY } from '../config';
 import { LocalStorageService } from './local-storage.service';
 import type { LocalStorageInterface } from './local-storage.service';
 
+/** One short-answer question on the form. */
+export interface FormField {
+    /** The digits of its `entry.N` parameter. */
+    id: string;
+    /**
+     * What the leader typed into that box when they made the pre-filled
+     * link, which is the only way to learn a question's wording without the
+     * OAuth-gated Forms API. It is also the CSV column header that fills it.
+     */
+    label: string;
+}
+
 export interface FormConfig {
     /** The long id from a form's `/d/e/<id>/viewform` URL. */
     formId: string;
-    /** The name question's entry id, digits only. */
-    nameEntry: string;
+    fields: FormField[];
+    /** A published-to-web CSV holding the roster, if there is one. */
+    csvUrl?: string;
 }
 
 export type ConfigListener = (config: FormConfig | null) => void;
 
 const FORM_ID = /\/forms\/d\/e\/([A-Za-z0-9_-]+)/;
-const ENTRY = /entry\.(\d+)/;
 const FORM_ID_ONLY = /^[A-Za-z0-9_-]{20,}$/;
 const DIGITS_ONLY = /^\d+$/;
 
 const isFormConfig = (value: FormConfig) =>
     !!value &&
     typeof value.formId === 'string' &&
-    typeof value.nameEntry === 'string' &&
     FORM_ID_ONLY.test(value.formId) &&
-    DIGITS_ONLY.test(value.nameEntry);
+    Array.isArray(value.fields) &&
+    value.fields.length > 0 &&
+    value.fields.every(
+        field =>
+            !!field &&
+            typeof field.id === 'string' &&
+            DIGITS_ONLY.test(field.id) &&
+            typeof field.label === 'string' &&
+            !!field.label.trim()
+    ) &&
+    (value.csvUrl === undefined || typeof value.csvUrl === 'string');
 
 /**
- * Pulls what it can out of whatever was pasted. A pre-filled link (Google
- * Forms' "Get pre-filled link") carries both halves, which is why the config
- * screen asks for one; a plain viewform URL or a bare id gives only the form.
+ * Reads a pre-filled form link.
+ *
+ * Google puts every box that was filled in into the address as
+ * `entry.<id>=<value>`, in the order the questions appear. Asking the leader
+ * to type each question's *label* into its own box therefore hands over the
+ * ids and the wording together, in one paste, with no authentication.
  */
 export const parseFormUrl = (
     text: string
-): { formId?: string; nameEntry?: string } => {
+): { formId?: string; fields: FormField[] } => {
     const trimmed = (text || '').trim();
-    const found: { formId?: string; nameEntry?: string } = {};
+    const found: { formId?: string; fields: FormField[] } = { fields: [] };
     const formId = FORM_ID.exec(trimmed);
-    const entry = ENTRY.exec(trimmed);
 
     if (formId) {
         found.formId = formId[1];
@@ -42,27 +65,57 @@ export const parseFormUrl = (
         found.formId = trimmed;
     }
 
-    if (entry) {
-        found.nameEntry = entry[1];
+    const query = trimmed.slice(trimmed.indexOf('?') + 1).split('#')[0];
+
+    if (trimmed.includes('?')) {
+        for (const [key, value] of new URLSearchParams(query)) {
+            const id = /^entry\.(\d+)$/.exec(key);
+
+            if (id && value.trim()) {
+                found.fields.push({ id: id[1], label: value.trim() });
+            }
+        }
     }
 
     return found;
 };
 
 /** The fragment a shared QR code carries, without the leading `#`. */
-export const serializeConfig = (config: FormConfig) =>
-    `${CONFIG_HASH_KEY}=${config.formId}~${config.nameEntry}`;
+export const serializeConfig = (config: FormConfig) => {
+    const payload = [
+        config.formId,
+        ...config.fields.map(field => `${field.id}:${field.label}`),
+    ].join('~');
+
+    return `${CONFIG_HASH_KEY}=${encodeURIComponent(payload)}${
+        config.csvUrl ? `&csv=${encodeURIComponent(config.csvUrl)}` : ''
+    }`;
+};
 
 export const deserializeConfig = (hash: string): FormConfig | null => {
-    const match = new RegExp(
-        `(?:^|[#&])${CONFIG_HASH_KEY}=([A-Za-z0-9_-]+)~(\\d+)`
-    ).exec(hash || '');
+    const text = hash || '';
+    const match = new RegExp(`(?:^|[#&])${CONFIG_HASH_KEY}=([^&#]+)`).exec(
+        text
+    );
 
     if (!match) {
         return null;
     }
 
-    const config = { formId: match[1], nameEntry: match[2] };
+    const parts = decodeURIComponent(match[1]).split('~');
+    const csv = /(?:^|[#&])csv=([^&#]+)/.exec(text);
+    const config: FormConfig = {
+        formId: parts[0],
+        fields: parts.slice(1).map(part => {
+            const at = part.indexOf(':');
+
+            return { id: part.slice(0, at), label: part.slice(at + 1) };
+        }),
+    };
+
+    if (csv) {
+        config.csvUrl = decodeURIComponent(csv[1]);
+    }
 
     return isFormConfig(config) ? config : null;
 };
@@ -89,6 +142,19 @@ export class ConfigService {
         return !!this._config;
     }
 
+    fields(): FormField[] {
+        return this._config?.fields || [];
+    }
+
+    /** The CSV column headers a roster file has to carry. */
+    fieldLabels(): string[] {
+        return this.fields().map(field => field.label);
+    }
+
+    csvUrl() {
+        return this._config?.csvUrl || '';
+    }
+
     set(config: FormConfig): boolean {
         if (!isFormConfig(config)) {
             return false;
@@ -99,6 +165,19 @@ export class ConfigService {
         this._notify();
 
         return true;
+    }
+
+    setCsvUrl(url: string) {
+        if (!this._config) {
+            return false;
+        }
+
+        const trimmed = url.trim();
+
+        return this.set({
+            ...this._config,
+            csvUrl: trimmed || undefined,
+        });
     }
 
     clear() {
@@ -112,17 +191,6 @@ export class ConfigService {
         return this._config
             ? `https://docs.google.com/forms/d/e/${this._config.formId}/formResponse`
             : null;
-    }
-
-    /** A pre-filled link, shown on the config screen so it can be checked. */
-    prefilledUrl() {
-        return this._config
-            ? `https://docs.google.com/forms/d/e/${this._config.formId}/viewform?usp=pp_url&${this.nameField()}=`
-            : null;
-    }
-
-    nameField() {
-        return this._config ? `entry.${this._config.nameEntry}` : null;
     }
 
     /**

@@ -133,6 +133,63 @@ component(
                 height: auto;
             }
 
+            .intro {
+                padding: 0.8em 1em;
+                margin-bottom: 1.2em;
+                background-color: var(--button-bg-color);
+                border-radius: 0.6em;
+            }
+
+            .intro p:last-child {
+                margin-bottom: 0;
+            }
+
+            .intro .lead {
+                margin-bottom: 0.3em;
+            }
+
+            .intro ol {
+                margin: 0 0 0.8em;
+                padding-left: 1.3em;
+            }
+
+            .intro li {
+                margin-bottom: 0.5em;
+            }
+
+            .notice {
+                padding: 0.6em 0.8em;
+                margin-bottom: 0.9em;
+                background-color: var(--notice-bg-color);
+                border-radius: 0.5em;
+            }
+
+            .fields {
+                padding: 0.6em 0.8em;
+                margin-bottom: 0.9em;
+                background-color: var(--button-bg-color);
+                border-radius: 0.5em;
+            }
+
+            .found {
+                margin: 0 0 0.4em;
+                font-weight: bold;
+            }
+
+            .fields ol {
+                margin: 0;
+                padding-left: 1.3em;
+            }
+
+            .fields li {
+                margin-bottom: 0.2em;
+            }
+
+            .entry {
+                font-size: 0.8em;
+                opacity: 0.6;
+            }
+
             .about {
                 margin-top: 1.6em;
                 font-size: 0.9em;
@@ -157,46 +214,134 @@ component(
 
             <div class="scroll">
                 <p class="error" *if="error">{{ error }}</p>
+                <p class="notice" *if="notice">{{ notice }}</p>
 
                 <div *if="view === 'edit'">
-                    <p *if="!saved">
-                        This device has not been set up yet. Paste the Google
-                        Form link below, or scan the code from a device that is
-                        already set up.
-                    </p>
+                    <div class="intro" *if="!saved">
+                        <p>
+                            This app takes attendance. Everyone on the roster
+                            gets a tile; tapping one posts that person to a
+                            Google Form, which collects the entries in a
+                            spreadsheet along with the time. One tap, nothing
+                            to confirm.
+                        </p>
 
-                    <label for="form-url">Google Form link or ID</label>
+                        <p class="lead">
+                            <strong>Someone else already set up a device?</strong>
+                            Tap <em>Scan a QR code</em> at the bottom of this
+                            screen and point it at theirs. That is the whole
+                            job -- the form, its questions and the roster all
+                            come across.
+                        </p>
+
+                        <p class="lead"><strong>Setting up the first one?</strong></p>
+                        <ol>
+                            <li>
+                                Make a Google Form with one
+                                <strong>short answer</strong> question for each
+                                thing you want recorded -- a name, maybe a
+                                troop or a den.
+                                <a
+                                    href="{{ docs.form }}"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    >How to make the form</a
+                                >
+                            </li>
+                            <li>
+                                On that form choose
+                                <em>Get pre-filled link</em>, and type each
+                                question's own name into its box -- "First"
+                                into the first-name box. Press
+                                <em>Get link</em> and copy it.
+                            </li>
+                            <li>
+                                Paste it below and press <em>Save</em>. The app
+                                reads the questions straight out of that
+                                address.
+                            </li>
+                        </ol>
+
+                        <p>
+                            Optional: keep the roster in a published
+                            spreadsheet instead of typing people in.
+                            <a
+                                href="{{ docs.roster }}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                >How the roster sheet works</a
+                            >
+                        </p>
+
+                        <p>
+                            <a
+                                href="{{ docs.setup }}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                >Full setup guide</a
+                            >
+                        </p>
+                    </div>
+
+                    <label for="form-url">Pre-filled Google Form link</label>
                     <input
                         id="form-url"
                         type="url"
                         autocomplete="off"
-                        placeholder="https://docs.google.com/forms/d/e/.../viewform"
+                        placeholder="https://docs.google.com/forms/d/e/.../viewform?usp=pp_url&entry..."
                         .value="formId"
                         @input="setFormUrl($event.target.value)"
                     />
                     <p class="hint">
-                        On the form, use the menu and choose "Get pre-filled
-                        link", fill in the name box with anything, press "Get
-                        link", then copy it here. That address carries the name
-                        field too, so the box below fills itself in.
+                        On the form, open the menu and choose "Get pre-filled
+                        link". Type each question's <em>name</em> into its own
+                        box -- "First" into the first-name box, "Troop" into
+                        the troop box -- then press "Get link" and copy it. The
+                        address carries the questions and their names together,
+                        which is how this app learns them. Every question has
+                        to be a short answer.
                     </p>
 
-                    <label for="name-entry">Name field</label>
+                    <div class="fields" *if="fields.length">
+                        <p class="found">{{ fieldSummary(fields) }}</p>
+                        <ol>
+                            <li *for="field of fields track field.id">
+                                {{ field.label }}
+                                <span class="entry">entry.{{ field.id }}</span>
+                            </li>
+                        </ol>
+                    </div>
+
+                    <label for="csv-url">Roster sheet (optional)</label>
                     <input
-                        id="name-entry"
-                        type="text"
-                        inputmode="numeric"
+                        id="csv-url"
+                        type="url"
                         autocomplete="off"
-                        placeholder="entry.1234567890"
-                        .value="nameEntry"
-                        @input="setNameEntry($event.target.value)"
+                        placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv"
+                        .value="csvUrl"
+                        @input="setCsvUrl($event.target.value)"
                     />
+                    <p class="hint">
+                        In the sheet, use File, Share, "Publish to web", pick
+                        the tab and <em>Comma-separated values</em>. The first
+                        column is what this app shows; every other column fills
+                        the question whose name matches its heading.
+                    </p>
+
+                    <div class="row">
+                        <button
+                            @click="importCsv()"
+                            .disabled="!csvUrl || busy"
+                        >
+                            {{ busy ? 'Importing...' : 'Import roster now' }}
+                        </button>
+                    </div>
 
                     <div class="row">
                         <button
                             class="primary"
                             @click="save()"
-                            .disabled="!canSave(formId, nameEntry)"
+                            .disabled="!canSave(formId, fields)"
                         >
                             Save
                         </button>
@@ -219,8 +364,8 @@ component(
 
                     <div *if="confirming">
                         <p>
-                            This forgets the form settings and every name on
-                            this device. Entries already sent are not touched.
+                            This forgets the form settings and everyone on this
+                            device. Entries already sent are not touched.
                         </p>
                         <div class="row">
                             <button @click="cancelClear()">Keep it</button>

@@ -10,15 +10,17 @@ the Google Form setup, which is worth reading first.
   and dark), `main.ts`, `404.html`, and `public/` with the icons and the web
   app manifest.
 - `src/services/` - plain classes over `localStorage` and `fetch`, with no DOM
-  and no Fudgel. `config.service.ts` holds the form settings and the parsing
-  and sharing of them, `roster.service.ts` the name list,
-  `attendance.service.ts` the single post, `online.service.ts` the connection
-  state, `qr.service.ts` drawing a code and `scanner.service.ts` reading one.
+  and no Fudgel. `schema.service.ts` wipes storage when its shape changes,
+  `config.service.ts` holds the form settings and the parsing and sharing of
+  them, `roster.service.ts` the people, `csv.service.ts` reads a published
+  sheet, `attendance.service.ts` makes the single post, `online.service.ts`
+  tracks the connection, `qr.service.ts` draws a code and
+  `scanner.service.ts` reads one.
 - `src/<screen>/` - one folder per component: `*.component.ts` calls
   `component()`, `*.module.ts` re-exports it, and screens with logic keep that
   logic in `*.controller.ts` (see Rules).
-- `src/config.ts` - the list limit, the `localStorage` keys, the share
-  fragment name. No form details: those are per device.
+- `src/config.ts` - the roster limit, the `localStorage` keys, the schema
+  version, the share fragment name. No form details: those are per device.
 - `.github/workflows/deploy.yml` - checks on every push and pull request,
   deploys to GitHub Pages from `master`.
 
@@ -48,9 +50,29 @@ npm run preview  # serve the build
   pre-filled link or a shared QR code. Never commit one, including in a test
   fixture that looks like a real form.
 - **The list never reorders itself.** Alphabetical, always. An order that
-  moved with use shuffles rows between taps, and someone marking a dozen
+  moved with use shuffles tiles between taps, and someone marking a dozen
   people in a row mis-taps. That also means there is no recency to evict by,
-  so a full list refuses a new name rather than guessing which to drop.
+  so a full roster refuses a new row rather than guessing which to drop.
+- **Changing a stored shape means bumping `SCHEMA_VERSION`.** The next load
+  then wipes every key in `STORAGE_KEYS` rather than reading a record written
+  to the old shape. A key that stops being used stays on that list so the
+  wipe reaches devices still carrying it. `clearEverything` deliberately
+  leaves the version marker behind: dropping it would make the following load
+  wipe settings scanned in between.
+- **What the app knows about the form comes only from a pre-filled link.**
+  Google puts every filled box into the address as `entry.<id>=<value>`, so
+  asking the leader to type each question's *name* into its own box hands over
+  the ids and the wording at once, with no authentication. A question's type
+  and a dropdown's choices are not in there -- they live in the form page,
+  which Google serves without CORS headers -- so the form has to be short
+  answers only, and the README says so.
+- **A roster sheet has to be published to the web, not merely shared.**
+  Publishing is what makes Google send CORS headers; shared-by-link does not,
+  and a browser cannot read it. `CsvService` takes the field labels as an
+  argument rather than reading the saved settings, because the setup screen
+  imports before Save has been pressed.
+- **The app has to work with no sheet at all.** `+` prompts for every
+  question, so a group that never publishes anything can still use it.
 - **A controller that holds logic lives in its own file**, apart from the
   `component()` call. `component()` scopes styles against a real `document`,
   so a module that calls it cannot be imported under Node, and the tests run
@@ -80,9 +102,13 @@ npm run preview  # serve the build
 - What a tap does, and the highlight that fades when the post lands:
   `attendance-screen.controller.ts` (`mark`, and `MIN_HIGHLIGHT_MS`, which
   exists so a fast connection still looks like something happened).
+- What the filter matches: `attendance-screen.controller.ts` (`_matches`,
+  which searches the label and every field value).
 - What counts as the same person, and the sort:
-  `roster.service.ts` (`normalizeName`, `compareKey`, `byName`).
+  `roster.service.ts` (`normalizeName`, `compareKey`, `byLabel`).
 - What a pasted link or scanned code is allowed to mean:
   `config.service.ts` (`parseFormUrl`, `deserializeConfig`).
+- How a sheet becomes people: `csv.service.ts` (`parseCsv` for the file
+  format, `toPeople` for the first-column-is-the-label rule).
 - Which screen opens: `app-root.component.ts`. There is no router; the config
   fragment a shared QR code carries would collide with one.

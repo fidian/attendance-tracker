@@ -1,65 +1,90 @@
 import { LocalStorageService } from './local-storage.service';
 import type { LocalStorageInterface } from './local-storage.service';
-import { RECENT_NAME_LIMIT } from '../config';
+import { ROSTER_LIMIT } from '../config';
 
-export type RosterListener = (names: string[]) => void;
+/** One row of the roster. */
+export interface Person {
+    /** What the list shows. The CSV's first column, or typed by hand. */
+    label: string;
+    /** Field label to value, so a roster outlives a change of entry ids. */
+    values: Record<string, string>;
+}
+
+export type RosterListener = (people: Person[]) => void;
 
 export type AddResult = 'added' | 'known' | 'full';
 
-const isStringList = (value: string[]) =>
-    Array.isArray(value) && value.every(item => typeof item === 'string');
+const isPersonList = (value: Person[]) =>
+    Array.isArray(value) &&
+    value.every(
+        person =>
+            !!person &&
+            typeof person.label === 'string' &&
+            !!person.label &&
+            !!person.values &&
+            typeof person.values === 'object' &&
+            !Array.isArray(person.values) &&
+            Object.values(person.values).every(v => typeof v === 'string')
+    );
 
 /**
- * Names as typed are kept for display, but two names that differ only by case
- * or by runs of whitespace are the same person.
+ * Labels as typed are kept for display, but two that differ only by case or
+ * by runs of whitespace are the same person.
  */
 export const normalizeName = (name: string) => name.trim().replace(/\s+/g, ' ');
 
 const compareKey = (name: string) => normalizeName(name).toLowerCase();
 
-const byName = (a: string, b: string) =>
-    a.localeCompare(b, undefined, { sensitivity: 'base' });
+const byLabel = (a: Person, b: Person) =>
+    a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
 
 /**
- * The list of names on the screen, always in alphabetical order.
+ * The people on the screen, always in alphabetical order by label.
  *
  * The order never depends on what was tapped, so a row cannot move out from
- * under a thumb: someone marking a dozen people in a row finds every name
- * exactly where it was. That also means there is no recency to evict by, so a
- * full list refuses new names rather than quietly dropping one.
+ * under a thumb. That also means there is no recency to evict by, so a full
+ * roster refuses a new row rather than quietly dropping one.
  */
 export class RosterService {
     private _listeners = new Set<RosterListener>();
-    private _names: string[];
-    private _storage: LocalStorageInterface<string[]>;
+    private _people: Person[];
+    private _storage: LocalStorageInterface<Person[]>;
 
     constructor() {
-        this._storage = LocalStorageService.json<string[]>(
-            'recentNames',
+        this._storage = LocalStorageService.json<Person[]>(
+            'roster',
             1,
-            isStringList
+            isPersonList
         );
-        this._names = this._tidy(this._storage.getItem() || []);
+        this._people = this._tidy(this._storage.getItem() || []);
     }
 
-    getNames(): string[] {
-        return this._names;
+    getPeople(): Person[] {
+        return this._people;
     }
 
     isFull() {
-        return this._names.length >= RECENT_NAME_LIMIT;
+        return this._people.length >= ROSTER_LIMIT;
     }
 
-    has(name: string) {
-        const key = compareKey(name);
+    find(label: string): Person | undefined {
+        const key = compareKey(label);
 
-        return this._names.some(existing => compareKey(existing) === key);
+        return this._people.find(person => compareKey(person.label) === key);
     }
 
-    add(name: string): AddResult {
-        const normalized = normalizeName(name);
+    has(label: string) {
+        return !!this.find(label);
+    }
 
-        if (!normalized || this.has(normalized)) {
+    add(person: Person): AddResult {
+        const label = normalizeName(person.label);
+
+        if (!label) {
+            return 'known';
+        }
+
+        if (this.has(label)) {
             return 'known';
         }
 
@@ -67,18 +92,29 @@ export class RosterService {
             return 'full';
         }
 
-        this._save([...this._names, normalized]);
+        this._save([...this._people, { ...person, label }]);
 
         return 'added';
     }
 
-    remove(name: string): string[] {
-        const key = compareKey(name);
+    remove(label: string): Person[] {
+        const key = compareKey(label);
         this._save(
-            this._names.filter(existing => compareKey(existing) !== key)
+            this._people.filter(person => compareKey(person.label) !== key)
         );
 
-        return this._names;
+        return this._people;
+    }
+
+    /**
+     * Swaps the whole roster for an imported one. Returns how many rows were
+     * dropped for being over the limit, so the screen can say so.
+     */
+    replaceAll(people: Person[]): number {
+        const tidied = this._tidy(people);
+        this._save(tidied);
+
+        return Math.max(0, people.length - tidied.length);
     }
 
     subscribe(listener: RosterListener): () => void {
@@ -89,30 +125,30 @@ export class RosterService {
         };
     }
 
-    private _save(names: string[]) {
-        this._names = this._tidy(names);
-        this._storage.setItem(this._names);
+    private _save(people: Person[]) {
+        this._people = this._tidy(people);
+        this._storage.setItem(this._people);
 
         for (const listener of this._listeners) {
-            listener(this._names);
+            listener(this._people);
         }
     }
 
     /** Drops blanks and duplicates, sorts, then trims to the limit. */
-    private _tidy(names: string[]): string[] {
+    private _tidy(people: Person[]): Person[] {
         const seen = new Set<string>();
-        const tidied: string[] = [];
+        const tidied: Person[] = [];
 
-        for (const name of names) {
-            const normalized = normalizeName(name);
-            const key = compareKey(normalized);
+        for (const person of people) {
+            const label = normalizeName(person.label || '');
+            const key = compareKey(label);
 
-            if (normalized && !seen.has(key)) {
+            if (label && !seen.has(key)) {
                 seen.add(key);
-                tidied.push(normalized);
+                tidied.push({ label, values: { ...person.values } });
             }
         }
 
-        return tidied.sort(byName).slice(0, RECENT_NAME_LIMIT);
+        return tidied.sort(byLabel).slice(0, ROSTER_LIMIT);
     }
 }

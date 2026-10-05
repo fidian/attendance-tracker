@@ -2,8 +2,13 @@ import { di } from './di';
 import { ConfigService } from './services/config.service';
 import { InstallPwaService } from './install-pwa/install-pwa.service';
 import { OnlineService } from './services/online.service';
+import { ensureSchema } from './services/schema.service';
 
 export const bootstrap = () => {
+    // Before anything reads storage: a record written to an older shape is
+    // cleared rather than half-understood.
+    ensureSchema();
+
     const configService = di(ConfigService);
 
     // Settings handed over by a scanned QR code arrive in the fragment. Take
