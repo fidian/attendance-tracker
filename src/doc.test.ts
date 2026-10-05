@@ -41,6 +41,39 @@ describe('the worked example in README.md', () => {
         expect(rows).toEqual(fields.map(f => ({ label: f.label, id: f.id })));
     });
 
+    /**
+     * The example prints a sample row and then, further down, what tapping
+     * that person sends. Editing the sheet changes the first and it is easy
+     * to leave the second behind, which is how "Auror Office" lingered after
+     * the departments were shortened.
+     */
+    it('sends, in the tap example, what the sample row says that person is', () => {
+        const fields = parseFormUrl(prefilled()).fields;
+
+        // First data row of the sheet table: | Display | First | Last | Dept |
+        const row = /\|\s*(Harry[^|]*)\|([^\n]*)\|\s*\n/.exec(README);
+        expect(row, 'the sheet table lost its Harry row').not.toBeNull();
+
+        const cells = row![2]
+            .split('|')
+            .map(cell => cell.trim())
+            .filter(Boolean);
+        const expected = fields.map((field, i) => `entry.${field.id}=${cells[i]}`);
+
+        const block = /```\n(entry\.[^`]+)```/.exec(README);
+        expect(block, 'the example lost its tap block').not.toBeNull();
+
+        const actual = block![1]
+            .trim()
+            .split('\n')
+            .map(line => line.trim());
+
+        expect(actual).toEqual(expected);
+
+        // And the label beside it is the same person.
+        expect(README).toContain(`*${row![1].trim()}* posts:`);
+    });
+
     it('spells the sheet headings the way the questions are named', () => {
         const labels = parseFormUrl(prefilled()).fields.map(f => f.label);
         const header = /\|\s*Display\s*\|([^\n]*)\|/.exec(README);

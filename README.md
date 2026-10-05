@@ -170,9 +170,9 @@ match. Short ones are easier to live with.
 
 | Display | First | Last | Dept |
 | --- | --- | --- | --- |
-| Harry P. (Auror Office) | Harry | Potter | Auror Office |
-| Hermione G. (Magical Law) | Hermione | Granger | Magical Law |
-| Ron W. (Auror Office) | Ron | Weasley | Auror Office |
+| Harry P. (Auror) | Harry | Potter | Auror |
+| Hermione G. (Law) | Hermione | Granger | Law |
+| Ron W. (Auror) | Ron | Weasley | Auror |
 
 `Display` is the tile text and is never submitted. The other three headings
 match the names from the table above exactly -- `First`, not `First Name`.
@@ -180,19 +180,24 @@ Get that wrong and the import still appears to work, but every person arrives
 with no values and the app warns that it ignored your columns and has no
 column for its questions.
 
-Keep `Display` short. Two columns on a phone is about 14 characters before it
-is cut off with an ellipsis, so "Harry P." beats "Harry P. (Auror Office)" if
-you have long department names.
+Keep `Display` short. A tile is half a phone screen wide, which these labels
+were measured against: at 375px every one up to 19 characters fits, and the
+three at 21 -- "Nymphadora T. (Auror)" and friends -- are cut off with an
+ellipsis. Twenty is about the limit, and it is a width rather than a count, so
+a label full of wide letters runs out sooner. That is the reason the
+departments here are "Auror" and "Law" instead of "Auror Office" and "Magical
+Law": with those, nearly every tile was clipped and "Albus D. (Hogwart..." and
+"Minerva M. (Hogw..." were hard to tell apart.
 
 ### What a tap sends
 
 Importing gives **Imported 25 people.** with no warnings. Tapping
-*Harry P. (Auror Office)* posts:
+*Harry P. (Auror)* posts:
 
 ```
 entry.1459473829=Harry
 entry.1364413192=Potter
-entry.346162006=Auror+Office
+entry.346162006=Auror
 ```
 
 Google adds the timestamp. The tile lights up, and fades when the post lands.
@@ -204,7 +209,7 @@ value, which is why it finds people the tiles do not name:
 
 | Typed | Finds |
 | --- | --- |
-| `auror` | the 5 people in Auror Office |
+| `auror` | the 5 people in Auror |
 | `weasley` | Arthur, Percy and Ron -- whose tiles only say "W." |
 | `herm` | Hermione |
 
