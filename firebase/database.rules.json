@@ -2,8 +2,47 @@
     "rules": {
         "groups": {
             "$groupId": {
-                ".read": "$groupId.length >= 20",
-                ".write": "$groupId.length >= 20"
+                ".read": "$groupId.matches(/^[A-Za-z0-9_-]{22,64}$/)",
+                ".write": "$groupId.matches(/^[A-Za-z0-9_-]{22,64}$/) && newData.exists()",
+
+                "meta": {
+                    "createdAt": { ".validate": "newData.isNumber()" },
+                    "$other": { ".validate": false }
+                },
+
+                "events": {
+                    "$eventId": {
+                        "name": {
+                            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200"
+                        },
+                        "createdAt": { ".validate": "newData.isNumber()" },
+                        "columns": {
+                            "$index": {
+                                ".validate": "newData.isString() && newData.val().length <= 200"
+                            }
+                        },
+                        "$other": { ".validate": false }
+                    }
+                },
+
+                "roster": {
+                    "$eventId": {
+                        "$personId": {
+                            "display": {
+                                ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200"
+                            },
+                            "present": { ".validate": "newData.isBoolean()" },
+                            "extra": {
+                                "$column": {
+                                    ".validate": "newData.isString() && newData.val().length <= 500"
+                                }
+                            },
+                            "$other": { ".validate": false }
+                        }
+                    }
+                },
+
+                "$other": { ".validate": false }
             }
         }
     }

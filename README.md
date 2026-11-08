@@ -81,25 +81,23 @@ The project lands on the free **Spark** plan, which asks for no card.
 
 Open the **Rules** tab of the database, replace everything there with the
 contents of [`firebase/database.rules.json`](firebase/database.rules.json)
-from this repository, and press **Publish**:
+from this repository, and press **Publish**.
 
-```json
-{
-    "rules": {
-        "groups": {
-            "$groupId": {
-                ".read": "$groupId.length >= 20",
-                ".write": "$groupId.length >= 20"
-            }
-        }
-    }
-}
-```
+They are longer than you might expect, and each part is doing a job:
 
-What these do, and why they are what they are, is under
-[Who can see your data](#who-can-see-your-data). The short version: the app's
-own settings are public, because they ship inside a web page, so the rules are
-written so that the settings alone are not enough to find anything.
+* **Reads and writes need a group id** of 22 to 64 characters from a
+  restricted alphabet. Nothing may list the groups, so the database address on
+  its own finds nothing.
+* **A write may not empty a group.** Without this, one stray request could
+  erase everything you have. It is also why each group keeps a small `meta`
+  record: deleting your last event empties `events` and `roster`, and `meta`
+  is what keeps the group itself alive.
+* **Only the shapes this app writes are accepted** — events, rosters and that
+  marker, with names and values capped in length. Anything else is refused,
+  which stops the database being used as somebody's free file store.
+
+What all this protects, and what it does not, is under
+[Who can see your data](#who-can-see-your-data).
 
 ### 4. Copy the database address
 
@@ -179,11 +177,29 @@ for the list of groups and asking for a short guessed id both come back
 id both succeed:
 
 ```
-GET  /groups.json                 -> 401 Permission denied
-PUT  /groups/<22-char id>.json    -> 200
-GET  /groups/<22-char id>.json    -> 200
-GET  /groups/short.json           -> 401 Permission denied
+GET    /groups.json                        -> 401 Permission denied
+GET    /groups/short.json                  -> 401 Permission denied
+PUT    /groups/<id>/events/e1.json         -> 200
+PUT    /groups/<id>/roster/e1/p1.json      -> 200
+DELETE /groups/<id>/events/e1.json         -> 200   (your last event is fine)
+DELETE /groups/<id>.json                   -> 401   (one call cannot wipe it)
+PUT    /groups/<id>/junk.json              -> 401   (shape is enforced)
 ```
+
+Two limits worth knowing:
+
+* **The rules cannot tell your group id from any other well-formed one.**
+  Somebody who reads the database address out of the app cannot find your
+  data, but they could write their own data under an id they invent, against
+  your free quota. The rules cap the shapes and sizes they could store, which
+  makes it a poor place to dump files, but the only real defence is
+  [App Check](https://firebase.google.com/docs/app-check), which proves a
+  request came from your app. Worth turning on if the address ever gets
+  attention.
+* **A group cannot be deleted from inside the app**, because that is the same
+  rule that stops one request erasing everything. Abandoning a group means
+  forgetting it; genuinely removing the data means deleting the node in the
+  Firebase console.
 
 Two consequences:
 
