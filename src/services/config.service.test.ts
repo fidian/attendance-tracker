@@ -231,3 +231,79 @@ describe('ConfigService', () => {
         expect(listener).toHaveBeenLastCalledWith(null);
     });
 });
+
+/**
+ * A link sent to somebody already set up would otherwise repoint their phone
+ * at the sender's database without a word, and the evening's attendance would
+ * be taken into it.
+ */
+describe('adopting a connection over an existing one', () => {
+    const OTHER = {
+        databaseUrl: 'https://someone-else-default-rtdb.firebaseio.com',
+        groupId: 'ZZZZZZZZZZZZZZZZZZZZZZ',
+    };
+
+    beforeEach(() => {
+        storage.clear();
+    });
+
+    it('adopts silently when the device has nothing yet', () => {
+        const config = new ConfigService();
+
+        expect(
+            config.adoptFromHash(`#${serializeConnection(CONNECTION)}`)
+        ).toBe(true);
+        expect(config.get()).toEqual(CONNECTION);
+    });
+
+    it('adopts silently when the link matches what is already there', () => {
+        const config = new ConfigService();
+        config.set(CONNECTION);
+
+        expect(
+            config.adoptFromHash(`#${serializeConnection(CONNECTION)}`)
+        ).toBe(true);
+    });
+
+    it('refuses a different connection unless it is confirmed', () => {
+        const config = new ConfigService();
+        config.set(CONNECTION);
+
+        expect(config.adoptFromHash(`#${serializeConnection(OTHER)}`)).toBe(
+            false
+        );
+        expect(config.get()).toEqual(CONNECTION);
+    });
+
+    it('takes it once confirmed, and says what it is replacing', () => {
+        const config = new ConfigService();
+        config.set(CONNECTION);
+        let asked: [typeof OTHER, typeof CONNECTION] | null = null;
+
+        const adopted = config.adoptFromHash(
+            `#${serializeConnection(OTHER)}`,
+            (next, current) => {
+                asked = [next, current];
+
+                return true;
+            }
+        );
+
+        expect(adopted).toBe(true);
+        expect(asked).toEqual([OTHER, CONNECTION]);
+        expect(config.get()).toEqual(OTHER);
+    });
+
+    it('asks when only the group differs, not just the database', () => {
+        const config = new ConfigService();
+        config.set(CONNECTION);
+        const sameDbOtherGroup = {
+            ...CONNECTION,
+            groupId: 'QQQQQQQQQQQQQQQQQQQQQQ',
+        };
+
+        expect(
+            config.adoptFromHash(`#${serializeConnection(sameDbOtherGroup)}`)
+        ).toBe(false);
+    });
+});

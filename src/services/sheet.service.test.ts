@@ -268,3 +268,43 @@ describe('safeFilename', () => {
         expect(safeFilename('///', 'csv')).toBe('attendance.csv');
     });
 });
+
+/**
+ * Column headings come from an imported file, so a roster passed between
+ * leaders can carry a hostile heading exactly as it can a hostile name.
+ */
+describe('a hostile column heading', () => {
+    it('is escaped on the way out', () => {
+        const rows = rosterToRows(
+            [person('p1', 'Ada', { '=cmd|calc': 'x' })],
+            ['=cmd|calc']
+        );
+
+        expect(rows[0]).toEqual(['Display', "'=cmd|calc"]);
+        expect(toCsv(rows).split('\r\n')[0]).toBe("Display,'=cmd|calc");
+    });
+
+    it('comes back as itself on the way in', () => {
+        const back = rowsToPeople(
+            parseCsv(
+                toCsv(
+                    rosterToRows(
+                        [person('p1', 'Ada', { '=cmd|calc': 'x' })],
+                        ['=cmd|calc']
+                    )
+                )
+            )
+        );
+
+        expect(back.columns).toEqual(['=cmd|calc']);
+        expect(back.people[0].extra).toEqual({ '=cmd|calc': 'x' });
+    });
+
+    it('is escaped in the report too', () => {
+        expect(reportToRows([person('p1', 'Ada')], ['+evil'])[0]).toEqual([
+            'Present',
+            'Display',
+            "'+evil",
+        ]);
+    });
+});

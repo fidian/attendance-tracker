@@ -12,10 +12,6 @@ own phones, both marking people off the same list, and neither has to ask the
 other who has already been seen. Setting the second phone up is one scan of a
 QR code.
 
-> **Work in progress.** The app is being rebuilt on Firebase. This README
-> documents the Firebase setup so it can be followed now; the rest will be
-> brought up to date as the app is finished.
-
 How it works
 ------------
 
@@ -30,8 +26,11 @@ How it works
   Database rather than on any one phone, so a tap on one device appears on the
   others without a reload.
 * **Rosters move in and out** as CSV or XLSX, and the attendance record comes
-  out as a report. The whole database can be backed up to one file and
-  restored from it.
+  out as a report.
+* **Everything can be backed up** to a single file from the event list, and
+  restored from it. Worth doing occasionally: Google eventually reclaims a
+  project nobody touches, and a group cannot be deleted from inside the app,
+  so a file you hold is the way out of both.
 * **There is no offline mode, on purpose.** A tap that cannot reach the
   database is not recorded, and the screen says so. Holding taps on a device
   and replaying them later would let a stale phone quietly overwrite somebody
@@ -132,12 +131,19 @@ never displayed:
 | Ron W. (Auror) | Ron | Weasley | Auror |
 
 The first column exists so two people with the same name can be told apart on
-screen. Keep it short: a tile is half a phone screen wide, and anything past
-about twenty characters is cut off with an ellipsis.
+screen. Keep it short: a tile is half a phone screen wide — 169 pixels at 375 —
+and measured against this roster, names up to 19 characters fit while
+21 is cut off with an ellipsis. Twenty is about the limit, and it is a
+width rather than a count, so wide letters run out sooner.
 
-Exporting the roster gives that sheet back. Exporting the **attendance
-report** gives the same sheet with one extra column at the front saying who
-was present.
+Exporting the roster gives that sheet back, columns in the same order.
+Exporting the **attendance report** gives the same sheet with one extra
+column at the front saying `Yes` or `No` for each person.
+
+Both are offered as CSV. Import accepts CSV or XLSX. Every cell is written as
+text, so `007` stays `007` and a name like `3-4` is not turned into a date,
+and a name beginning `=`, `+`, `-` or `@` is escaped so a spreadsheet shows it
+rather than running it.
 
 Nothing forces you to use a file at all — people can be added by hand on the
 manage-people screen, and a group that never imports anything works fine.
@@ -145,8 +151,8 @@ manage-people screen, and a group that never imports anything works fine.
 Setting up another phone
 ------------------------
 
-On a phone that is already working, open the menu and choose **Share**. It
-shows a QR code.
+On a phone that is already working, open the menu, choose **Settings**, then
+**Share with another phone**. It shows a QR code.
 
 On the new phone, either point its ordinary camera at the code and open the
 link, or use **Scan** in the app. Either way it arrives already set up: the
@@ -208,6 +214,9 @@ Two limits worth knowing:
 
 Two consequences:
 
+* **A link that would move a phone to a *different* database asks first**,
+  naming the host, so a link from somebody else cannot quietly redirect an
+  evening's attendance. Setting up a new phone is unaffected.
 * **There is no way to revoke one phone.** If a code gets out, the fix is to
   make a new group and re-share it. That is one of the reasons the app can
   back its data up and restore it.

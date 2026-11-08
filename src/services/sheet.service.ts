@@ -43,12 +43,18 @@ export const toCsvCell = (value: string) =>
 export const toCsv = (rows: string[][]) =>
     rows.map(row => row.map(toCsvCell).join(',')).join('\r\n');
 
-/** Header plus one row per person, in the event's remembered column order. */
+/**
+ * Header plus one row per person, in the event's remembered column order.
+ *
+ * The headings are escaped along with everything else: they come from
+ * whatever file was imported, so a roster shared between leaders can carry a
+ * hostile one just as easily as a hostile name.
+ */
 export const rosterToRows = (
     people: Person[],
     columns: string[]
 ): string[][] => [
-    ['Display', ...columns],
+    ['Display', ...columns.map(escapeCell)],
     ...people.map(person => [
         escapeCell(person.display),
         ...columns.map(column => escapeCell(person.extra[column] ?? '')),
@@ -89,7 +95,7 @@ export const rowsToPeople = (rows: string[][]): SheetImport => {
             return;
         }
 
-        const name = (raw || '').trim();
+        const name = unescapeCell((raw || '').trim());
 
         if (!name) {
             return;

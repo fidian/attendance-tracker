@@ -158,14 +158,33 @@ export class ConfigService {
     }
 
     /**
-     * Reads a connection handed over in the address bar and keeps it. The
-     * fragment is stripped afterwards so a reload cannot re-apply settings
-     * that have since been changed.
+     * Reads a connection handed over in the address bar and keeps it.
+     *
+     * Adopting silently is right for a device being set up, which is the
+     * whole point of the shared code. It is wrong for a device that already
+     * has one: a link sent to a leader who is already set up would quietly
+     * point their phone at somebody else's database, and the evening's
+     * attendance would be taken into it. So replacing a *different*
+     * connection asks first, and is the only time it does.
      */
-    adoptFromHash(hash = location.hash): boolean {
+    adoptFromHash(
+        hash = location.hash,
+        confirmReplace: (next: Connection, current: Connection) => boolean = () =>
+            false
+    ): boolean {
         const connection = deserializeConnection(hash);
 
         if (!connection) {
+            return false;
+        }
+
+        const current = this._connection;
+        const differs =
+            !!current &&
+            (current.databaseUrl !== connection.databaseUrl ||
+                current.groupId !== connection.groupId);
+
+        if (differs && !confirmReplace(connection, current)) {
             return false;
         }
 
