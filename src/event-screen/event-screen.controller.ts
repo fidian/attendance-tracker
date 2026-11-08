@@ -108,31 +108,42 @@ export class EventScreenComponent {
         return [
             { id: 'people', label: 'Manage people' },
             { id: 'import', label: 'Import roster' },
-            { id: 'export', label: 'Export roster' },
-            { id: 'report', label: 'Export attendance report' },
+            { id: 'export-csv', label: 'Export roster (CSV)' },
+            { id: 'export-xlsx', label: 'Export roster (Excel)' },
+            { id: 'report-csv', label: 'Export report (CSV)' },
+            { id: 'report-xlsx', label: 'Export report (Excel)' },
             { id: 'rename', label: 'Rename event' },
             { id: 'copy', label: 'Copy event' },
             { id: 'delete', label: 'Delete event', danger: true },
         ];
     }
 
+    /**
+     * Every menu id mapped to what it does. Kept as data rather than a chain
+     * of branches so a test can assert that nothing in the menu is a dead
+     * entry -- `Export roster (Excel)` shipped once with no handler at all.
+     */
+    menuActions(): Record<string, () => void> {
+        return {
+            people: () => this._navigationService.go('people', this.eventId),
+            import: () => this.picker?.click(),
+            'export-csv': () => this.exportRoster(),
+            'export-xlsx': () => void this.exportRosterXlsx(),
+            'report-csv': () => this.exportReport(),
+            'report-xlsx': () => void this.exportReportXlsx(),
+            rename: () => {
+                this.renameTo = this.event?.name || '';
+                this.view = 'rename';
+            },
+            copy: () => void this.copyEvent(),
+            delete: () => {
+                this.view = 'confirm-delete';
+            },
+        };
+    }
+
     onMenu(id: string) {
-        if (id === 'people') {
-            this._navigationService.go('people', this.eventId);
-        } else if (id === 'import') {
-            this.picker?.click();
-        } else if (id === 'export') {
-            this.exportRoster();
-        } else if (id === 'report') {
-            this.exportReport();
-        } else if (id === 'rename') {
-            this.renameTo = this.event?.name || '';
-            this.view = 'rename';
-        } else if (id === 'copy') {
-            this.copyEvent();
-        } else if (id === 'delete') {
-            this.view = 'confirm-delete';
-        }
+        this.menuActions()[id]?.();
     }
 
     back() {
@@ -274,18 +285,34 @@ export class EventScreenComponent {
         );
     }
 
-    async exportRosterXlsx() {
-        await this._sheetService.downloadXlsx(
+    exportRosterXlsx() {
+        return this._xlsx(
             `${this.title(this.event)} roster`,
             rosterToRows(this.people, this.event?.columns || [])
         );
     }
 
-    async exportReportXlsx() {
-        await this._sheetService.downloadXlsx(
+    exportReportXlsx() {
+        return this._xlsx(
             `${this.title(this.event)} attendance`,
             reportToRows(this.people, this.event?.columns || [])
         );
+    }
+
+    /**
+     * Writing a spreadsheet fetches the library first, so this can fail where
+     * the CSV path cannot. A silent nothing would look like a broken menu.
+     */
+    private async _xlsx(filename: string, rows: string[][]) {
+        this.busy = true;
+
+        try {
+            await this._sheetService.downloadXlsx(filename, rows);
+        } catch (error) {
+            this._showToast(`The spreadsheet could not be made. ${this._message(error)}`);
+        }
+
+        this.busy = false;
     }
 
     /** Replaces the roster outright, as an import does. */
