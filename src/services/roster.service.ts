@@ -189,6 +189,9 @@ export class RosterService {
                 table.remove(id);
                 emit();
             },
+            // An event with nobody on it fires no child events at all, so
+            // without this the screen would wait for a first list forever.
+            ready: emit,
         });
     }
 

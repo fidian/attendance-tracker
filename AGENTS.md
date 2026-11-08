@@ -117,16 +117,22 @@ npm run preview  # serve the build
 
 ## Testing, and what is deliberately not tested
 
-Vitest runs `environment: 'node'` with no DOM shim. The old rule was to fake
-only the network, and it mostly survives, with one exception that was chosen
-rather than stumbled into.
+Vitest runs `environment: 'node'` with no DOM shim.
 
-The Firebase SDK talks over a WebSocket, which cannot be stubbed the way
-`fetch` can, and faking one well enough to prove anything costs more than it
-proves. So instead of mocking a service -- which hides the thing worth
-checking -- **the untestable surface is made small and named**:
-`firebase.service.ts` is the only file importing the SDK and holds no
-decisions, so it can be checked by reading it.
+**Do not mock a service that is entirely internal.** Build the real thing over
+the real `localStorage` shim: a test that stands in for `ConfigService` or
+`RosterService` proves only that the stand-in behaves as written, and the
+decisions worth checking live in those services.
+
+**A service that reaches out may be mocked**, and `firebase.service.ts` is the
+one that does. The SDK talks over a WebSocket, which cannot be stubbed the way
+`fetch` can, and faking one faithfully costs more than it proves -- so that
+file is the whole of the untestable surface, by design: it is the only file
+importing the SDK and it holds no decisions, which makes it checkable by
+reading. Standing a recorder in for it is how the wiring *around* it gets
+tested, and that wiring has had real bugs: see `roster.watch.test.ts`, where
+an event with nobody on it fired no child events and the screen said
+"Loading..." forever.
 
 Everything else is pure and tested directly: the stored-record readers
 (`toEvent`, `toPerson`), `RosterTable` which is where live updates land,

@@ -20,6 +20,13 @@ export interface ChildHandlers {
     added: (key: string, value: unknown) => void;
     changed: (key: string, value: unknown) => void;
     removed: (key: string) => void;
+    /**
+     * The initial children have all arrived. Child events alone cannot say
+     * this: a path with nothing at it fires none of them, which is how an
+     * empty roster sat on "Loading" forever. A one-time `value` listener
+     * fires in both cases, and after every initial `child_added`.
+     */
+    ready: () => void;
 }
 
 /**
@@ -120,6 +127,7 @@ export class FirebaseService {
         onChildAdded(reference, added);
         onChildChanged(reference, changed);
         onChildRemoved(reference, removed);
+        onValue(reference, () => handlers.ready(), { onlyOnce: true });
 
         return () => {
             off(reference, 'child_added', added);
