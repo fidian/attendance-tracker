@@ -1,225 +1,175 @@
-import { CONFIG_HASH_KEY } from '../config';
+import { CONFIG_HASH_KEY, GROUP_HASH_KEY } from '../config';
 import { LocalStorageService } from './local-storage.service';
 import type { LocalStorageInterface } from './local-storage.service';
 
-/** One short-answer question on the form. */
-export interface FormField {
-    /** The digits of its `entry.N` parameter. */
-    id: string;
-    /**
-     * What the leader typed into that box when they made the pre-filled
-     * link, which is the only way to learn a question's wording without the
-     * OAuth-gated Forms API. It is also the CSV column header that fills it.
-     */
-    label: string;
+/** Everything this device needs to reach its data. */
+export interface Connection {
+    /** The Realtime Database address, with no trailing slash or path. */
+    databaseUrl: string;
+    /** Which group inside that database. Secret; see the README. */
+    groupId: string;
 }
 
-export interface FormConfig {
-    /** The long id from a form's `/d/e/<id>/viewform` URL. */
-    formId: string;
-    fields: FormField[];
-    /** A published-to-web CSV holding the roster, if there is one. */
-    csvUrl?: string;
-}
-
-export type ConfigListener = (config: FormConfig | null) => void;
-
-const FORM_ID = /\/forms\/d\/e\/([A-Za-z0-9_-]+)/;
-const FORM_ID_ONLY = /^[A-Za-z0-9_-]{20,}$/;
-const DIGITS_ONLY = /^\d+$/;
-
-const isFormConfig = (value: FormConfig) =>
-    !!value &&
-    typeof value.formId === 'string' &&
-    FORM_ID_ONLY.test(value.formId) &&
-    Array.isArray(value.fields) &&
-    value.fields.length > 0 &&
-    value.fields.every(
-        field =>
-            !!field &&
-            typeof field.id === 'string' &&
-            DIGITS_ONLY.test(field.id) &&
-            typeof field.label === 'string' &&
-            !!field.label.trim()
-    ) &&
-    (value.csvUrl === undefined || typeof value.csvUrl === 'string');
+export type ConfigListener = (connection: Connection | null) => void;
 
 /**
- * Reads a pre-filled form link.
- *
- * Google puts every box that was filled in into the address as
- * `entry.<id>=<value>`, in the order the questions appear. Asking the leader
- * to type each question's *label* into its own box therefore hands over the
- * ids and the wording together, in one paste, with no authentication.
+ * The same shape the database rules enforce. Keeping the two in step matters:
+ * a group id this accepts but the rules reject would look like a connection
+ * failure rather than a bad id.
  */
-export const parseFormUrl = (
-    text: string
-): { formId?: string; fields: FormField[] } => {
+export const GROUP_ID_PATTERN = /^[A-Za-z0-9_-]{22,64}$/;
+
+const DATABASE_HOST =
+    /^[a-z0-9-]+\.(firebaseio\.com|[a-z0-9-]+\.firebasedatabase\.app)$/i;
+
+/**
+ * 16 random bytes, base64url, which is 22 characters and 128 bits. Long
+ * enough that guessing is hopeless, short enough to keep the shared QR code
+ * easy to scan.
+ */
+export const newGroupId = () => {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+
+    return btoa(String.fromCharCode(...bytes))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+};
+
+/**
+ * Accepts what somebody actually copies out of the Firebase console, which
+ * may carry a path, a query or a trailing slash, and reduces it to the bare
+ * origin. Returns null for anything that is not a Realtime Database address,
+ * so a Firestore URL or a typo is refused at the point of entry.
+ */
+export const normalizeDatabaseUrl = (text: string): string | null => {
     const trimmed = (text || '').trim();
-    const found: { formId?: string; fields: FormField[] } = { fields: [] };
-    const formId = FORM_ID.exec(trimmed);
 
-    if (formId) {
-        found.formId = formId[1];
-    } else if (FORM_ID_ONLY.test(trimmed)) {
-        found.formId = trimmed;
-    }
-
-    const query = trimmed.slice(trimmed.indexOf('?') + 1).split('#')[0];
-
-    if (trimmed.includes('?')) {
-        for (const [key, value] of new URLSearchParams(query)) {
-            const id = /^entry\.(\d+)$/.exec(key);
-
-            if (id && value.trim()) {
-                found.fields.push({ id: id[1], label: value.trim() });
-            }
-        }
-    }
-
-    return found;
-};
-
-/** The fragment a shared QR code carries, without the leading `#`. */
-export const serializeConfig = (config: FormConfig) => {
-    const payload = [
-        config.formId,
-        ...config.fields.map(field => `${field.id}:${field.label}`),
-    ].join('~');
-
-    return `${CONFIG_HASH_KEY}=${encodeURIComponent(payload)}${
-        config.csvUrl ? `&csv=${encodeURIComponent(config.csvUrl)}` : ''
-    }`;
-};
-
-export const deserializeConfig = (hash: string): FormConfig | null => {
-    const text = hash || '';
-    const match = new RegExp(`(?:^|[#&])${CONFIG_HASH_KEY}=([^&#]+)`).exec(
-        text
-    );
-
-    if (!match) {
+    if (!trimmed) {
         return null;
     }
 
-    const parts = decodeURIComponent(match[1]).split('~');
-    const csv = /(?:^|[#&])csv=([^&#]+)/.exec(text);
-    const config: FormConfig = {
-        formId: parts[0],
-        fields: parts.slice(1).map(part => {
-            const at = part.indexOf(':');
+    let url: URL;
 
-            return { id: part.slice(0, at), label: part.slice(at + 1) };
-        }),
-    };
-
-    if (csv) {
-        config.csvUrl = decodeURIComponent(csv[1]);
+    try {
+        url = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`);
+    } catch (_ignore) {
+        return null;
     }
 
-    return isFormConfig(config) ? config : null;
+    if (url.protocol !== 'https:' || !DATABASE_HOST.test(url.hostname)) {
+        return null;
+    }
+
+    return `https://${url.hostname.toLowerCase()}`;
+};
+
+export const isConnection = (value: Connection) =>
+    !!value &&
+    typeof value.databaseUrl === 'string' &&
+    normalizeDatabaseUrl(value.databaseUrl) === value.databaseUrl &&
+    typeof value.groupId === 'string' &&
+    GROUP_ID_PATTERN.test(value.groupId);
+
+/** The fragment a shared QR code carries, without the leading `#`. */
+export const serializeConnection = (connection: Connection) =>
+    `${CONFIG_HASH_KEY}=${encodeURIComponent(connection.databaseUrl)}` +
+    `&${GROUP_HASH_KEY}=${encodeURIComponent(connection.groupId)}`;
+
+export const deserializeConnection = (hash: string): Connection | null => {
+    const text = hash || '';
+    const read = (key: string) => {
+        const match = new RegExp(`(?:^|[#&?])${key}=([^&#]+)`).exec(text);
+
+        return match ? decodeURIComponent(match[1]) : '';
+    };
+    const databaseUrl = normalizeDatabaseUrl(read(CONFIG_HASH_KEY));
+    const connection = { databaseUrl: databaseUrl || '', groupId: read(GROUP_HASH_KEY) };
+
+    return isConnection(connection) ? connection : null;
 };
 
 export class ConfigService {
-    private _config: FormConfig | null;
+    private _connection: Connection | null;
     private _listeners = new Set<ConfigListener>();
-    private _storage: LocalStorageInterface<FormConfig>;
+    private _storage: LocalStorageInterface<Connection>;
 
     constructor() {
-        this._storage = LocalStorageService.json<FormConfig>(
-            'formConfig',
+        this._storage = LocalStorageService.json<Connection>(
+            'connection',
             1,
-            isFormConfig
+            isConnection
         );
-        this._config = this._storage.getItem();
+        this._connection = this._storage.getItem();
     }
 
-    get(): FormConfig | null {
-        return this._config;
+    get(): Connection | null {
+        return this._connection;
     }
 
     isConfigured() {
-        return !!this._config;
+        return !!this._connection;
     }
 
-    fields(): FormField[] {
-        return this._config?.fields || [];
+    databaseUrl() {
+        return this._connection?.databaseUrl || '';
     }
 
-    /** The CSV column headers a roster file has to carry. */
-    fieldLabels(): string[] {
-        return this.fields().map(field => field.label);
+    groupId() {
+        return this._connection?.groupId || '';
     }
 
-    csvUrl() {
-        return this._config?.csvUrl || '';
+    /** The path everything this device touches hangs from. */
+    groupPath() {
+        return this._connection ? `groups/${this._connection.groupId}` : '';
     }
 
-    set(config: FormConfig): boolean {
-        if (!isFormConfig(config)) {
+    set(connection: Connection): boolean {
+        if (!isConnection(connection)) {
             return false;
         }
 
-        this._config = config;
-        this._storage.setItem(config);
+        this._connection = connection;
+        this._storage.setItem(connection);
         this._notify();
 
         return true;
     }
 
-    setCsvUrl(url: string) {
-        if (!this._config) {
-            return false;
-        }
-
-        const trimmed = url.trim();
-
-        return this.set({
-            ...this._config,
-            csvUrl: trimmed || undefined,
-        });
-    }
-
     clear() {
-        this._config = null;
+        this._connection = null;
         this._storage.reset();
         this._notify();
     }
 
-    /** Where an entry is posted. Null until the app has been configured. */
-    formResponseUrl() {
-        return this._config
-            ? `https://docs.google.com/forms/d/e/${this._config.formId}/formResponse`
-            : null;
-    }
-
     /**
-     * The URL a shared QR code encodes: this app, carrying the settings. A
+     * The URL a shared QR code encodes: this app, carrying the connection. A
      * phone camera opens it and the app configures itself on load.
      */
     shareUrl(appUrl = location.href) {
-        if (!this._config) {
+        if (!this._connection) {
             return null;
         }
 
-        return `${appUrl.split('#')[0]}#${serializeConfig(this._config)}`;
+        return `${appUrl.split('#')[0].split('?')[0]}#${serializeConnection(
+            this._connection
+        )}`;
     }
 
     /**
-     * Reads settings handed over in the address bar and keeps them. The
-     * fragment is stripped afterwards so a reload does not re-apply settings
+     * Reads a connection handed over in the address bar and keeps it. The
+     * fragment is stripped afterwards so a reload cannot re-apply settings
      * that have since been changed.
      */
     adoptFromHash(hash = location.hash): boolean {
-        const config = deserializeConfig(hash);
+        const connection = deserializeConnection(hash);
 
-        if (!config) {
+        if (!connection) {
             return false;
         }
 
-        this.set(config);
-
-        return true;
+        return this.set(connection);
     }
 
     subscribe(listener: ConfigListener): () => void {
@@ -232,7 +182,7 @@ export class ConfigService {
 
     private _notify() {
         for (const listener of this._listeners) {
-            listener(this._config);
+            listener(this._connection);
         }
     }
 }

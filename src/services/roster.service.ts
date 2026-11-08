@@ -1,154 +1,245 @@
-import { LocalStorageService } from './local-storage.service';
-import type { LocalStorageInterface } from './local-storage.service';
+import { di } from '../di';
+import { ConfigService } from './config.service';
+import { FirebaseService } from './firebase.service';
 import { ROSTER_LIMIT } from '../config';
 
-/** One row of the roster. */
 export interface Person {
-    /** What the list shows. The CSV's first column, or typed by hand. */
-    label: string;
-    /** Field label to value, so a roster outlives a change of entry ids. */
-    values: Record<string, string>;
+    id: string;
+    /** What the list shows. The sheet's first column, or typed by hand. */
+    display: string;
+    /** Every other column, kept so an export round-trips. */
+    extra: Record<string, string>;
+    present: boolean;
 }
+
+/** A person before the database has given them an id. */
+export type NewPerson = Omit<Person, 'id'>;
 
 export type RosterListener = (people: Person[]) => void;
 
-export type AddResult = 'added' | 'known' | 'full';
-
-const isPersonList = (value: Person[]) =>
-    Array.isArray(value) &&
-    value.every(
-        person =>
-            !!person &&
-            typeof person.label === 'string' &&
-            !!person.label &&
-            !!person.values &&
-            typeof person.values === 'object' &&
-            !Array.isArray(person.values) &&
-            Object.values(person.values).every(v => typeof v === 'string')
-    );
-
 /**
- * Labels as typed are kept for display, but two that differ only by case or
- * by runs of whitespace are the same person.
+ * Display names as typed are kept, but two that differ only by case or by
+ * runs of whitespace are the same person.
  */
 export const normalizeName = (name: string) => name.trim().replace(/\s+/g, ' ');
 
 const compareKey = (name: string) => normalizeName(name).toLowerCase();
 
-const byLabel = (a: Person, b: Person) =>
-    a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+/** Alphabetical, always. Nothing reorders under a thumb mid-meeting. */
+export const byDisplay = (a: Person, b: Person) =>
+    a.display.localeCompare(b.display, undefined, { sensitivity: 'base' }) ||
+    a.id.localeCompare(b.id);
+
+const asExtra = (value: unknown): Record<string, string> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return {};
+    }
+
+    const extra: Record<string, string> = {};
+
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof item === 'string') {
+            extra[key] = item;
+        } else if (typeof item === 'number' || typeof item === 'boolean') {
+            // A sheet column of numbers arrives as numbers; keep it readable.
+            extra[key] = String(item);
+        }
+    }
+
+    return extra;
+};
+
+/** Anything unreadable is skipped rather than taking the screen down. */
+export const toPerson = (id: string, raw: unknown): Person | null => {
+    if (!raw || typeof raw !== 'object') {
+        return null;
+    }
+
+    const stored = raw as { display?: unknown; extra?: unknown; present?: unknown };
+    const display =
+        typeof stored.display === 'string' ? normalizeName(stored.display) : '';
+
+    if (!display) {
+        return null;
+    }
+
+    return {
+        id,
+        display,
+        extra: asExtra(stored.extra),
+        present: stored.present === true,
+    };
+};
+
+export const toPeople = (raw: unknown): Person[] => {
+    if (!raw || typeof raw !== 'object') {
+        return [];
+    }
+
+    return Object.entries(raw as Record<string, unknown>)
+        .map(([id, value]) => toPerson(id, value))
+        .filter((person): person is Person => !!person)
+        .sort(byDisplay);
+};
+
+/** What goes to the database. The id is the key, so it is not in the value. */
+export const fromPerson = (person: NewPerson) => ({
+    display: normalizeName(person.display),
+    extra: person.extra,
+    present: person.present,
+});
 
 /**
- * The people on the screen, always in alphabetical order by label.
- *
- * The order never depends on what was tapped, so a row cannot move out from
- * under a thumb. That also means there is no recency to evict by, so a full
- * roster refuses a new row rather than quietly dropping one.
+ * Copying an event brings the people but not the attendance. Who was at last
+ * week's meeting says nothing about who is at this one.
  */
+export const forCopy = (people: Person[]): NewPerson[] =>
+    people.map(person => ({
+        display: person.display,
+        extra: { ...person.extra },
+        present: false,
+    }));
+
+/**
+ * Keeps the roster the screen is showing, updated one child at a time.
+ *
+ * This is where the live updates land, and it is pure so it can be tested
+ * without a database: the service feeds it what Firebase reports and reads
+ * back a sorted list.
+ */
+export class RosterTable {
+    private _byId = new Map<string, Person>();
+
+    upsert(id: string, raw: unknown): boolean {
+        const person = toPerson(id, raw);
+
+        if (!person) {
+            return this.remove(id);
+        }
+
+        this._byId.set(id, person);
+
+        return true;
+    }
+
+    remove(id: string): boolean {
+        return this._byId.delete(id);
+    }
+
+    clear() {
+        this._byId.clear();
+    }
+
+    get(id: string) {
+        return this._byId.get(id);
+    }
+
+    /** True when somebody with this display name is already listed. */
+    has(display: string) {
+        const key = compareKey(display);
+
+        return [...this._byId.values()].some(
+            person => compareKey(person.display) === key
+        );
+    }
+
+    get size() {
+        return this._byId.size;
+    }
+
+    list(): Person[] {
+        return [...this._byId.values()].sort(byDisplay);
+    }
+}
+
 export class RosterService {
-    private _listeners = new Set<RosterListener>();
-    private _people: Person[];
-    private _storage: LocalStorageInterface<Person[]>;
+    private _configService = di(ConfigService);
+    private _firebaseService = di(FirebaseService);
 
-    constructor() {
-        this._storage = LocalStorageService.json<Person[]>(
-            'roster',
-            1,
-            isPersonList
-        );
-        this._people = this._tidy(this._storage.getItem() || []);
+    private _path(eventId: string, personId = '') {
+        const base = `${this._configService.groupPath()}/roster/${eventId}`;
+
+        return personId ? `${base}/${personId}` : base;
     }
 
-    getPeople(): Person[] {
-        return this._people;
-    }
-
-    isFull() {
-        return this._people.length >= ROSTER_LIMIT;
-    }
-
-    find(label: string): Person | undefined {
-        const key = compareKey(label);
-
-        return this._people.find(person => compareKey(person.label) === key);
-    }
-
-    has(label: string) {
-        return !!this.find(label);
-    }
-
-    add(person: Person): AddResult {
-        const label = normalizeName(person.label);
-
-        if (!label) {
-            return 'known';
-        }
-
-        if (this.has(label)) {
-            return 'known';
-        }
-
-        if (this.isFull()) {
-            return 'full';
-        }
-
-        this._save([...this._people, { ...person, label }]);
-
-        return 'added';
-    }
-
-    remove(label: string): Person[] {
-        const key = compareKey(label);
-        this._save(
-            this._people.filter(person => compareKey(person.label) !== key)
-        );
-
-        return this._people;
+    list(eventId: string): Promise<Person[]> {
+        return this._firebaseService
+            .read<unknown>(this._path(eventId))
+            .then(toPeople);
     }
 
     /**
-     * Swaps the whole roster for an imported one. Returns how many rows were
-     * dropped for being over the limit, so the screen can say so.
+     * Live, one child at a time. Watching the whole subtree would re-send
+     * every person on every tap, to every device looking at the event.
      */
-    replaceAll(people: Person[]): number {
-        const tidied = this._tidy(people);
-        this._save(tidied);
+    watch(eventId: string, listener: RosterListener): () => void {
+        const table = new RosterTable();
+        const emit = () => listener(table.list());
 
-        return Math.max(0, people.length - tidied.length);
+        return this._firebaseService.watchChildren(this._path(eventId), {
+            added: (id, raw) => {
+                table.upsert(id, raw);
+                emit();
+            },
+            changed: (id, raw) => {
+                table.upsert(id, raw);
+                emit();
+            },
+            removed: id => {
+                table.remove(id);
+                emit();
+            },
+        });
     }
 
-    subscribe(listener: RosterListener): () => void {
-        this._listeners.add(listener);
+    add(eventId: string, person: NewPerson): Promise<string> {
+        const display = normalizeName(person.display);
 
-        return () => {
-            this._listeners.delete(listener);
-        };
-    }
-
-    private _save(people: Person[]) {
-        this._people = this._tidy(people);
-        this._storage.setItem(this._people);
-
-        for (const listener of this._listeners) {
-            listener(this._people);
-        }
-    }
-
-    /** Drops blanks and duplicates, sorts, then trims to the limit. */
-    private _tidy(people: Person[]): Person[] {
-        const seen = new Set<string>();
-        const tidied: Person[] = [];
-
-        for (const person of people) {
-            const label = normalizeName(person.label || '');
-            const key = compareKey(label);
-
-            if (label && !seen.has(key)) {
-                seen.add(key);
-                tidied.push({ label, values: { ...person.values } });
-            }
+        if (!display) {
+            return Promise.reject(new Error('A person needs a name.'));
         }
 
-        return tidied.sort(byLabel).slice(0, ROSTER_LIMIT);
+        return this._firebaseService.append(
+            this._path(eventId),
+            fromPerson({ ...person, display })
+        );
+    }
+
+    /** One write, so the screen does not redraw once per person. */
+    removeMany(eventId: string, ids: string[]): Promise<void> {
+        if (!ids.length) {
+            return Promise.resolve();
+        }
+
+        return this._firebaseService.writeMany(
+            this._path(eventId),
+            Object.fromEntries(ids.map(id => [id, null]))
+        );
+    }
+
+    setPresent(eventId: string, personId: string, present: boolean) {
+        return this._firebaseService.write(
+            `${this._path(eventId, personId)}/present`,
+            present
+        );
+    }
+
+    /**
+     * Swaps the whole roster, as an import does. Returns how many were left
+     * out for being over the limit so the screen can say so.
+     */
+    async replaceAll(eventId: string, people: NewPerson[]): Promise<number> {
+        const kept = people.slice(0, ROSTER_LIMIT);
+        const written: Record<string, unknown> = {};
+
+        for (const [index, person] of kept.entries()) {
+            // Keys are generated here rather than by push() so the whole
+            // roster lands in a single write.
+            written[`p${String(index).padStart(5, '0')}`] = fromPerson(person);
+        }
+
+        await this._firebaseService.write(this._path(eventId), written);
+
+        return people.length - kept.length;
     }
 }

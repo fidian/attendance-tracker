@@ -1,21 +1,20 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ROSTER_LIMIT } from '../config';
-import { normalizeName, RosterService } from './roster.service';
+import { describe, expect, it } from 'vitest';
+import {
+    byDisplay,
+    forCopy,
+    fromPerson,
+    normalizeName,
+    RosterTable,
+    toPeople,
+    toPerson,
+} from './roster.service';
 import type { Person } from './roster.service';
-import { storage } from './local-storage.service';
 
-const person = (label: string, values: Record<string, string> = {}): Person => ({
-    label,
-    values,
+const stored = (display: string, extra = {}, present = false) => ({
+    display,
+    extra,
+    present,
 });
-
-const peopleUpTo = (count: number) =>
-    Array.from({ length: count }, (_v, i) =>
-        person(`Scout ${String(i + 1).padStart(3, '0')}`)
-    );
-
-const labels = (roster: RosterService) =>
-    roster.getPeople().map(p => p.label);
 
 describe('normalizeName', () => {
     it('trims and collapses whitespace', () => {
@@ -23,131 +22,191 @@ describe('normalizeName', () => {
     });
 });
 
-describe('RosterService', () => {
-    beforeEach(() => {
-        storage.clear();
-    });
-
-    it('starts empty', () => {
-        expect(new RosterService().getPeople()).toEqual([]);
-    });
-
-    it('keeps people alphabetical by label however they arrive', () => {
-        const roster = new RosterService();
-        roster.add(person('Zoe'));
-        roster.add(person('ada'));
-        roster.add(person('Mabel'));
-
-        expect(labels(roster)).toEqual(['ada', 'Mabel', 'Zoe']);
-    });
-
-    it('keeps the field values alongside the label', () => {
-        const roster = new RosterService();
-        roster.add(
-            person('Claude (123)', { First: 'Claude', Troop: '123' })
+describe('toPerson', () => {
+    it('reads a stored person', () => {
+        expect(toPerson('p1', stored('Harry P.', { First: 'Harry' }, true))).toEqual(
+            {
+                id: 'p1',
+                display: 'Harry P.',
+                extra: { First: 'Harry' },
+                present: true,
+            }
         );
+    });
 
-        expect(roster.find('claude (123)')?.values).toEqual({
-            First: 'Claude',
-            Troop: '123',
+    it('defaults a missing present and extra', () => {
+        expect(toPerson('p1', { display: 'Ada' })).toEqual({
+            id: 'p1',
+            display: 'Ada',
+            extra: {},
+            present: false,
         });
     });
 
-    it('treats labels differing only by case or spacing as one person', () => {
-        const roster = new RosterService();
-        expect(roster.add(person('Ada Byron'))).toBe('added');
-        expect(roster.add(person('ada   byron'))).toBe('known');
-        expect(labels(roster)).toEqual(['Ada Byron']);
+    it('treats anything but true as absent', () => {
+        for (const present of ['true', 1, null, undefined, 'yes']) {
+            expect(toPerson('p1', { display: 'Ada', present })?.present).toBe(
+                false
+            );
+        }
     });
 
-    it('distinguishes two people who share a first name', () => {
-        const roster = new RosterService();
-        roster.add(person('Claude (123)', { Troop: '123' }));
-        roster.add(person('Claude (456)', { Troop: '456' }));
-
-        expect(labels(roster)).toEqual(['Claude (123)', 'Claude (456)']);
+    /** A sheet column of numbers comes back as numbers, not strings. */
+    it('keeps a numeric extra column readable', () => {
+        expect(
+            toPerson('p1', stored('Ada', { Troop: 123, Active: true }))?.extra
+        ).toEqual({ Troop: '123', Active: 'true' });
     });
 
-    it('ignores a blank label', () => {
-        const roster = new RosterService();
-        expect(roster.add(person('   '))).toBe('known');
-        expect(roster.getPeople()).toEqual([]);
+    it('skips a record with no usable name', () => {
+        for (const raw of [null, 'nope', 42, {}, { display: '' }, { display: '   ' }]) {
+            expect(toPerson('p1', raw)).toBeNull();
+        }
     });
 
-    it(`refuses someone past ${ROSTER_LIMIT} rather than dropping anyone`, () => {
-        const roster = new RosterService();
-        roster.replaceAll(peopleUpTo(ROSTER_LIMIT));
+    it('ignores an extra that is not an object', () => {
+        expect(toPerson('p1', stored('Ada', 'nope' as never))?.extra).toEqual({});
+    });
+});
 
-        expect(roster.isFull()).toBe(true);
-        expect(roster.add(person('Newcomer'))).toBe('full');
-        expect(roster.getPeople()).toHaveLength(ROSTER_LIMIT);
+describe('toPeople', () => {
+    it('reads a roster alphabetically regardless of key order', () => {
+        const people = toPeople({
+            p3: stored('Zoe'),
+            p1: stored('ada'),
+            p2: stored('Mabel'),
+        });
+
+        expect(people.map(p => p.display)).toEqual(['ada', 'Mabel', 'Zoe']);
     });
 
-    it('takes someone again once room is made', () => {
-        const roster = new RosterService();
-        roster.replaceAll(peopleUpTo(ROSTER_LIMIT));
-        roster.remove('Scout 001');
+    it('drops unreadable records rather than failing', () => {
+        const people = toPeople({ p1: stored('Ada'), p2: null, p3: { nope: 1 } });
 
-        expect(roster.add(person('Newcomer'))).toBe('added');
+        expect(people.map(p => p.display)).toEqual(['Ada']);
     });
 
-    it('removes someone whatever the capitalization', () => {
-        const roster = new RosterService();
-        roster.add(person('Ada'));
-        roster.add(person('Zoe'));
-        roster.remove('ADA');
+    it('is empty for anything that is not a record', () => {
+        for (const raw of [null, undefined, 'x', 7]) {
+            expect(toPeople(raw)).toEqual([]);
+        }
+    });
+});
 
-        expect(labels(roster)).toEqual(['Zoe']);
+describe('byDisplay', () => {
+    it('sorts without regard to case', () => {
+        const names = ['bob', 'Alice', 'carol'].map((display, i) => ({
+            id: `p${i}`,
+            display,
+            extra: {},
+            present: false,
+        }));
+
+        expect([...names].sort(byDisplay).map(p => p.display)).toEqual([
+            'Alice',
+            'bob',
+            'carol',
+        ]);
     });
 
-    it('replaces the whole roster on import and reports what was dropped', () => {
-        const roster = new RosterService();
-        roster.add(person('Leftover'));
+    /** Two people really can share a display name; order must still be stable. */
+    it('falls back to the id so the order never flickers', () => {
+        const a: Person = { id: 'p2', display: 'Sam', extra: {}, present: false };
+        const b: Person = { id: 'p1', display: 'Sam', extra: {}, present: false };
 
-        expect(roster.replaceAll([person('Ada'), person('Zoe')])).toBe(0);
-        expect(labels(roster)).toEqual(['Ada', 'Zoe']);
+        expect([a, b].sort(byDisplay).map(p => p.id)).toEqual(['p1', 'p2']);
+        expect([b, a].sort(byDisplay).map(p => p.id)).toEqual(['p1', 'p2']);
+    });
+});
+
+describe('fromPerson', () => {
+    it('writes the normalized name and drops the id', () => {
+        expect(
+            fromPerson({ display: '  Ada   Byron ', extra: { A: '1' }, present: true })
+        ).toEqual({ display: 'Ada Byron', extra: { A: '1' }, present: true });
+    });
+});
+
+describe('forCopy', () => {
+    it('brings the people but not the attendance', () => {
+        const people = toPeople({
+            p1: stored('Ada', { Dept: 'Law' }, true),
+            p2: stored('Zoe', {}, true),
+        });
+
+        expect(forCopy(people)).toEqual([
+            { display: 'Ada', extra: { Dept: 'Law' }, present: false },
+            { display: 'Zoe', extra: {}, present: false },
+        ]);
     });
 
-    it('reports how many an oversized import lost', () => {
-        const roster = new RosterService();
+    it('copies the extras rather than sharing them', () => {
+        const people = toPeople({ p1: stored('Ada', { Dept: 'Law' }) });
+        const copy = forCopy(people);
+        copy[0].extra.Dept = 'Changed';
 
-        expect(roster.replaceAll(peopleUpTo(ROSTER_LIMIT + 7))).toBe(7);
-        expect(roster.getPeople()).toHaveLength(ROSTER_LIMIT);
+        expect(people[0].extra.Dept).toBe('Law');
+    });
+});
+
+/** This is where live updates land, so it is tested without a database. */
+describe('RosterTable', () => {
+    it('starts empty', () => {
+        expect(new RosterTable().list()).toEqual([]);
     });
 
-    it('collapses duplicate labels within one import', () => {
-        const roster = new RosterService();
-        roster.replaceAll([person('Ada'), person('ADA'), person('Zoe')]);
+    it('adds, keeps sorted, and reports its size', () => {
+        const table = new RosterTable();
+        table.upsert('p2', stored('Zoe'));
+        table.upsert('p1', stored('Ada'));
 
-        expect(labels(roster)).toEqual(['Ada', 'Zoe']);
+        expect(table.list().map(p => p.display)).toEqual(['Ada', 'Zoe']);
+        expect(table.size).toBe(2);
     });
 
-    it('persists across instances, still sorted', () => {
-        const first = new RosterService();
-        first.add(person('Zoe', { Troop: '1' }));
-        first.add(person('Ada'));
+    it('replaces a person in place when they change', () => {
+        const table = new RosterTable();
+        table.upsert('p1', stored('Ada', {}, false));
+        table.upsert('p1', stored('Ada', {}, true));
 
-        const second = new RosterService();
-        expect(labels(second)).toEqual(['Ada', 'Zoe']);
-        expect(second.find('Zoe')?.values).toEqual({ Troop: '1' });
+        expect(table.size).toBe(1);
+        expect(table.get('p1')?.present).toBe(true);
     });
 
-    it('ignores a stored value written to the old string-list shape', () => {
-        storage.setItem('roster', JSON.stringify([1, ['Ada', 'Zoe']]));
+    it('removes a person', () => {
+        const table = new RosterTable();
+        table.upsert('p1', stored('Ada'));
 
-        expect(new RosterService().getPeople()).toEqual([]);
+        expect(table.remove('p1')).toBe(true);
+        expect(table.remove('p1')).toBe(false);
+        expect(table.list()).toEqual([]);
     });
 
-    it('notifies subscribers until they unsubscribe', () => {
-        const roster = new RosterService();
-        const listener = vi.fn();
-        const unsubscribe = roster.subscribe(listener);
+    /**
+     * A record edited into an unreadable state arrives as a change, not a
+     * removal, so it has to drop out rather than linger half-read.
+     */
+    it('drops a person whose record stops being readable', () => {
+        const table = new RosterTable();
+        table.upsert('p1', stored('Ada'));
+        table.upsert('p1', { display: '' });
 
-        roster.add(person('Ada'));
-        expect(listener).toHaveBeenCalledTimes(1);
+        expect(table.list()).toEqual([]);
+    });
 
-        unsubscribe();
-        roster.add(person('Zoe'));
-        expect(listener).toHaveBeenCalledTimes(1);
+    it('knows whether a display name is already listed', () => {
+        const table = new RosterTable();
+        table.upsert('p1', stored('Ada Byron'));
+
+        expect(table.has('ada   byron')).toBe(true);
+        expect(table.has('Zoe')).toBe(false);
+    });
+
+    it('clears', () => {
+        const table = new RosterTable();
+        table.upsert('p1', stored('Ada'));
+        table.clear();
+
+        expect(table.size).toBe(0);
     });
 });

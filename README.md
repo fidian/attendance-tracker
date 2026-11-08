@@ -149,8 +149,9 @@ On a phone that is already working, open the menu and choose **Share**. It
 shows a QR code.
 
 On the new phone, either point its ordinary camera at the code and open the
-link, or use **Scan** in the app. Either way it arrives already set up — the
-database address and the group it belongs to both travel in the code.
+link, or use **Scan** in the app. Either way it arrives already set up: the
+code carries both the database address and the group id, which is everything
+needed and the only place either of them is written down.
 
 Who can see your data
 ---------------------
@@ -160,16 +161,20 @@ group.** That is the point of it: handing a second leader a working phone has
 to take seconds, not minutes. Treat the code like a door key, and do not put
 it on a slide or a noticeboard.
 
-What the code is *not* is the only thing standing between your data and the
-internet, and the distinction is worth understanding:
+What the code is *not* is a thing anyone can find by looking at the app.
+**Nothing in the published app points at any database.** It is built with no
+address in it at all; the address is typed in once, or arrives by QR, and is
+kept on the device. Two separate things have to be known before a request can
+reach your data, and both of them only ever travel in that code:
 
-* The database address is public no matter what. It ships inside a web page
-  that anybody can view the source of.
-* So the rules deny listing. Nothing can ask the database "what groups
-  exist?". Reads and writes are only allowed underneath a group id that is
-  already known.
-* The group id is 132 random bits, generated on the device. It never appears
-  in the app's source, only in a QR code you choose to show somebody.
+* **The database address**, which belongs to your Firebase project. Not
+  published anywhere, though it is not a strong secret either — it is derived
+  from the project name plus a short suffix Firebase picks, so treat it as
+  hard to guess rather than impossible.
+* **The group id**, which is 128 random bits generated on the device. This is
+  the part that actually protects you. The rules deny listing, so nothing can
+  ask the database what groups exist; reads and writes are only allowed
+  underneath an id already known.
 
 That is not a theory. Against a database with these rules published, asking
 for the list of groups and asking for a short guessed id both come back
@@ -189,13 +194,13 @@ PUT    /groups/<id>/junk.json              -> 401   (shape is enforced)
 Two limits worth knowing:
 
 * **The rules cannot tell your group id from any other well-formed one.**
-  Somebody who reads the database address out of the app cannot find your
-  data, but they could write their own data under an id they invent, against
-  your free quota. The rules cap the shapes and sizes they could store, which
-  makes it a poor place to dump files, but the only real defence is
-  [App Check](https://firebase.google.com/docs/app-check), which proves a
-  request came from your app. Worth turning on if the address ever gets
-  attention.
+  Somebody who learned your database address could not find your data, but
+  they could write their own under an id they invent, against your free
+  quota. Since the address is not published, this needs them to go looking
+  first. The rules cap the shapes and sizes they could store, which makes it
+  a poor place to dump files; if the address ever does get attention,
+  [App Check](https://firebase.google.com/docs/app-check) proves a request
+  came from your app and shuts the door entirely.
 * **A group cannot be deleted from inside the app**, because that is the same
   rule that stops one request erasing everything. Abandoning a group means
   forgetting it; genuinely removing the data means deleting the node in the

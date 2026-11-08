@@ -1,108 +1,139 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     ConfigService,
-    deserializeConfig,
-    parseFormUrl,
-    serializeConfig,
+    deserializeConnection,
+    GROUP_ID_PATTERN,
+    isConnection,
+    newGroupId,
+    normalizeDatabaseUrl,
+    serializeConnection,
 } from './config.service';
 import { storage } from './local-storage.service';
 
-const FORM_ID = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-const BASE = `https://docs.google.com/forms/d/e/${FORM_ID}/viewform`;
-const FIELDS = [
-    { id: '111', label: 'First' },
-    { id: '222', label: 'Last' },
-    { id: '333', label: 'Troop' },
-];
-const CONFIG = { formId: FORM_ID, fields: FIELDS };
+const URL_US = 'https://attendance-sample-default-rtdb.firebaseio.com';
+const URL_EU =
+    'https://attendance-sample-default-rtdb.europe-west1.firebasedatabase.app';
+const GROUP = 'M5wzfssFBd3AYKAEVCdqiX';
+const CONNECTION = { databaseUrl: URL_US, groupId: GROUP };
 
-describe('parseFormUrl', () => {
-    it('reads every question out of a pre-filled link, in order', () => {
-        const url = `${BASE}?usp=pp_url&entry.111=First&entry.222=Last&entry.333=Troop`;
-
-        expect(parseFormUrl(url)).toEqual({ formId: FORM_ID, fields: FIELDS });
+describe('newGroupId', () => {
+    it('makes an id the database rules will accept', () => {
+        for (let i = 0; i < 50; i++) {
+            expect(newGroupId()).toMatch(GROUP_ID_PATTERN);
+        }
     });
 
-    it('uses the typed value as the question name', () => {
-        const url = `${BASE}?usp=pp_url&entry.111=Scout+Name`;
-
-        expect(parseFormUrl(url).fields).toEqual([
-            { id: '111', label: 'Scout Name' },
-        ]);
+    it('is 22 characters, which is 128 bits', () => {
+        expect(newGroupId()).toHaveLength(22);
     });
 
-    it('skips a box that was left empty, because it carries no name', () => {
-        const url = `${BASE}?usp=pp_url&entry.111=First&entry.222=`;
+    it('does not repeat', () => {
+        const seen = new Set(Array.from({ length: 200 }, () => newGroupId()));
 
-        expect(parseFormUrl(url).fields).toEqual([
-            { id: '111', label: 'First' },
-        ]);
-    });
-
-    it('takes the form id from a plain viewform link but finds no questions', () => {
-        expect(parseFormUrl(BASE)).toEqual({ formId: FORM_ID, fields: [] });
-    });
-
-    it('accepts a bare form id', () => {
-        expect(parseFormUrl(`  ${FORM_ID}  `)).toEqual({
-            formId: FORM_ID,
-            fields: [],
-        });
-    });
-
-    it('finds nothing in unrelated text', () => {
-        expect(parseFormUrl('https://example.com/?entry.1=x').formId).toBe(
-            undefined
-        );
-        expect(parseFormUrl('')).toEqual({ fields: [] });
+        expect(seen.size).toBe(200);
     });
 });
 
-describe('serializeConfig / deserializeConfig', () => {
-    it('round trips every question', () => {
-        expect(deserializeConfig(`#${serializeConfig(CONFIG)}`)).toEqual(
-            CONFIG
-        );
+describe('normalizeDatabaseUrl', () => {
+    it('accepts a us-central1 address', () => {
+        expect(normalizeDatabaseUrl(URL_US)).toBe(URL_US);
     });
 
-    it('round trips a label with spaces and punctuation', () => {
-        const config = {
-            formId: FORM_ID,
-            fields: [{ id: '111', label: 'Scout name (first & last)' }],
-        };
-
-        expect(deserializeConfig(`#${serializeConfig(config)}`)).toEqual(
-            config
-        );
+    it('accepts an address in another region', () => {
+        expect(normalizeDatabaseUrl(URL_EU)).toBe(URL_EU);
     });
 
-    it('carries the roster sheet along', () => {
-        const config = {
-            ...CONFIG,
-            csvUrl: 'https://docs.google.com/spreadsheets/d/e/x/pub?output=csv',
-        };
+    it('strips a trailing slash, a path and a query', () => {
+        expect(normalizeDatabaseUrl(`${URL_US}/`)).toBe(URL_US);
+        expect(normalizeDatabaseUrl(`${URL_US}/data?x=1`)).toBe(URL_US);
+    });
 
-        expect(deserializeConfig(`#${serializeConfig(config)}`)).toEqual(
-            config
-        );
+    it('trims and adds the scheme when it was left off', () => {
+        expect(
+            normalizeDatabaseUrl('  attendance-sample-default-rtdb.firebaseio.com ')
+        ).toBe(URL_US);
+    });
+
+    it('lowercases the host', () => {
+        expect(
+            normalizeDatabaseUrl('https://Attendance-Sample-Default-RTDB.firebaseio.com')
+        ).toBe(URL_US);
+    });
+
+    /** A Firestore address is the mistake the setup screen most expects. */
+    it('refuses anything that is not a Realtime Database address', () => {
+        for (const bad of [
+            '',
+            '   ',
+            'not a url',
+            'https://console.firebase.google.com/project/x',
+            'https://firestore.googleapis.com/v1/projects/x',
+            'https://example.com',
+            'http://attendance-sample-default-rtdb.firebaseio.com',
+        ]) {
+            expect(normalizeDatabaseUrl(bad), bad).toBeNull();
+        }
+    });
+});
+
+describe('isConnection', () => {
+    it('accepts a well-formed pair', () => {
+        expect(isConnection(CONNECTION)).toBe(true);
+    });
+
+    it('refuses a group id the database rules would reject', () => {
+        for (const groupId of ['', 'short', 'has.dots.in.it.xxxxxxx', 'a'.repeat(65)]) {
+            expect(
+                isConnection({ databaseUrl: URL_US, groupId }),
+                groupId
+            ).toBe(false);
+        }
+    });
+
+    it('refuses an address that is not normalized', () => {
+        expect(
+            isConnection({ databaseUrl: `${URL_US}/`, groupId: GROUP })
+        ).toBe(false);
+    });
+});
+
+describe('serializeConnection / deserializeConnection', () => {
+    it('round trips', () => {
+        expect(
+            deserializeConnection(`#${serializeConnection(CONNECTION)}`)
+        ).toEqual(CONNECTION);
+    });
+
+    it('round trips a regional address', () => {
+        const connection = { databaseUrl: URL_EU, groupId: GROUP };
+
+        expect(
+            deserializeConnection(`#${serializeConnection(connection)}`)
+        ).toEqual(connection);
     });
 
     it('reads it out of a whole shared URL', () => {
         expect(
-            deserializeConfig(
-                `https://fidian.github.io/attendance-tracker/#${serializeConfig(CONFIG)}`
+            deserializeConnection(
+                `https://fidian.github.io/attendance-tracker/#${serializeConnection(CONNECTION)}`
             )
-        ).toEqual(CONFIG);
+        ).toEqual(CONNECTION);
     });
 
-    it('rejects a fragment that is not settings', () => {
-        expect(deserializeConfig('#something-else')).toBeNull();
-        expect(deserializeConfig('')).toBeNull();
-        expect(deserializeConfig('#config=short~1:x')).toBeNull();
+    it('refuses a fragment that carries no connection', () => {
+        expect(deserializeConnection('')).toBeNull();
+        expect(deserializeConnection('#something-else')).toBeNull();
     });
 
-    it('rejects settings carrying no questions', () => {
-        expect(deserializeConfig(`#config=${FORM_ID}`)).toBeNull();
+    it('refuses a fragment missing either half', () => {
+        expect(deserializeConnection(`#db=${encodeURIComponent(URL_US)}`)).toBeNull();
+        expect(deserializeConnection(`#g=${GROUP}`)).toBeNull();
+    });
+
+    it('refuses a fragment whose group id would fail the rules', () => {
+        expect(
+            deserializeConnection(`#db=${encodeURIComponent(URL_US)}&g=short`)
+        ).toBeNull();
     });
 });
 
@@ -115,98 +146,86 @@ describe('ConfigService', () => {
         const config = new ConfigService();
 
         expect(config.isConfigured()).toBe(false);
-        expect(config.fields()).toEqual([]);
-        expect(config.formResponseUrl()).toBeNull();
+        expect(config.get()).toBeNull();
+        expect(config.groupPath()).toBe('');
+        expect(config.shareUrl('https://example.com/')).toBeNull();
     });
 
-    it('keeps settings and builds the post URL', () => {
+    it('keeps a connection and builds the group path', () => {
         const config = new ConfigService();
 
-        expect(config.set(CONFIG)).toBe(true);
-        expect(config.formResponseUrl()).toBe(
-            `https://docs.google.com/forms/d/e/${FORM_ID}/formResponse`
-        );
-        expect(config.fieldLabels()).toEqual(['First', 'Last', 'Troop']);
+        expect(config.set(CONNECTION)).toBe(true);
+        expect(config.databaseUrl()).toBe(URL_US);
+        expect(config.groupPath()).toBe(`groups/${GROUP}`);
     });
 
-    it('refuses settings with no questions', () => {
-        expect(new ConfigService().set({ formId: FORM_ID, fields: [] })).toBe(
-            false
-        );
-    });
-
-    it('refuses a question with a non-numeric id or a blank name', () => {
+    it('refuses a malformed connection', () => {
         const config = new ConfigService();
 
-        expect(
-            config.set({ formId: FORM_ID, fields: [{ id: 'a', label: 'x' }] })
-        ).toBe(false);
-        expect(
-            config.set({ formId: FORM_ID, fields: [{ id: '1', label: ' ' }] })
-        ).toBe(false);
+        expect(config.set({ databaseUrl: 'nope', groupId: GROUP })).toBe(false);
+        expect(config.isConfigured()).toBe(false);
     });
 
     it('persists across instances', () => {
-        new ConfigService().set(CONFIG);
+        new ConfigService().set(CONNECTION);
 
-        expect(new ConfigService().get()).toEqual(CONFIG);
+        expect(new ConfigService().get()).toEqual(CONNECTION);
     });
 
-    it('ignores a stored value written to the old single-field shape', () => {
+    it('ignores a value stored in the old Google Forms shape', () => {
         storage.setItem(
-            'formConfig',
-            JSON.stringify([1, { formId: FORM_ID, nameEntry: '111' }])
+            'connection',
+            JSON.stringify([1, { formId: 'x', fields: [] }])
         );
 
         expect(new ConfigService().isConfigured()).toBe(false);
     });
 
-    it('keeps the roster sheet separately', () => {
-        const config = new ConfigService();
-        config.set(CONFIG);
-        config.setCsvUrl('  https://example.com/pub?output=csv  ');
-
-        expect(config.csvUrl()).toBe('https://example.com/pub?output=csv');
-        expect(new ConfigService().csvUrl()).toBe(
-            'https://example.com/pub?output=csv'
-        );
-    });
-
     it('forgets everything on clear', () => {
         const config = new ConfigService();
-        config.set(CONFIG);
+        config.set(CONNECTION);
         config.clear();
 
         expect(config.isConfigured()).toBe(false);
         expect(new ConfigService().isConfigured()).toBe(false);
     });
 
-    it('builds a share URL, dropping any old fragment', () => {
+    it('builds a share URL, dropping any fragment or query already there', () => {
         const config = new ConfigService();
-        config.set(CONFIG);
+        config.set(CONNECTION);
         const url = config.shareUrl(
-            'https://fidian.github.io/attendance-tracker/#old'
+            'https://fidian.github.io/attendance-tracker/?event=abc#old'
         );
 
         expect(url?.startsWith('https://fidian.github.io/attendance-tracker/#'))
             .toBe(true);
-        expect(deserializeConfig(url || '')).toEqual(CONFIG);
+        expect(deserializeConnection(url || '')).toEqual(CONNECTION);
     });
 
-    it('adopts settings handed over in a fragment', () => {
+    it('adopts a connection handed over in a fragment', () => {
         const config = new ConfigService();
 
-        expect(config.adoptFromHash(`#${serializeConfig(CONFIG)}`)).toBe(true);
-        expect(config.get()).toEqual(CONFIG);
+        expect(
+            config.adoptFromHash(`#${serializeConnection(CONNECTION)}`)
+        ).toBe(true);
+        expect(config.get()).toEqual(CONNECTION);
     });
 
-    it('notifies subscribers when settings change or are cleared', () => {
+    it('leaves a connection alone when the fragment carries none', () => {
+        const config = new ConfigService();
+        config.set(CONNECTION);
+
+        expect(config.adoptFromHash('#nothing-here')).toBe(false);
+        expect(config.get()).toEqual(CONNECTION);
+    });
+
+    it('notifies subscribers when the connection changes or is cleared', () => {
         const config = new ConfigService();
         const listener = vi.fn();
         config.subscribe(listener);
 
-        config.set(CONFIG);
-        expect(listener).toHaveBeenLastCalledWith(CONFIG);
+        config.set(CONNECTION);
+        expect(listener).toHaveBeenLastCalledWith(CONNECTION);
 
         config.clear();
         expect(listener).toHaveBeenLastCalledWith(null);
