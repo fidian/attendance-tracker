@@ -2,13 +2,13 @@
     "name": "attendance-tracker",
     "version": "1.0.0",
     "private": true,
-    "description": "One-tap youth group attendance, posted to a Google Form.",
+    "description": "Take attendance in one tap, shared live between phones.",
     "keywords": [
         "attendance",
-        "google-forms",
+        "firebase",
+        "realtime-database",
         "pwa",
-        "fudgel",
-        "scouts"
+        "fudgel"
     ],
     "homepage": "https://fidian.github.io/attendance-tracker/",
     "repository": {

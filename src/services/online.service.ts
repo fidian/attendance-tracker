@@ -2,7 +2,7 @@ export type OnlineListener = (online: boolean) => void;
 
 /**
  * `navigator.onLine` is only ever a hint -- it says the device has a network
- * interface, not that Google is reachable. It is good enough to grey the
+ * interface, not that the database is reachable. It is good enough to grey the
  * buttons out, and a post that fails anyway is reported on its own.
  */
 export class OnlineService {

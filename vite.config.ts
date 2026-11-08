@@ -11,9 +11,9 @@ const BASE = '/attendance-tracker/';
 
 /**
  * There is no service worker and nothing is precached, on purpose. An entry
- * that cannot reach Google is not recorded anywhere, so the app refuses to
- * take entries while it is offline rather than holding them. The web app
- * manifest in `site/public` is what makes it installable.
+ * that cannot reach the database is not recorded anywhere, so the app
+ * refuses to take entries while it is offline rather than holding them. The
+ * web app manifest in `site/public` is what makes it installable.
  */
 
 // https://vitejs.dev/config/

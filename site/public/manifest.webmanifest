@@ -1,7 +1,7 @@
 {
     "name": "Attendance Tracker",
     "short_name": "Attendance",
-    "description": "Mark youth group attendance in one tap.",
+    "description": "Take attendance in one tap, shared live between phones.",
     "start_url": "./",
     "scope": "./",
     "display": "standalone",
