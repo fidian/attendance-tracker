@@ -1,0 +1,10 @@
+{
+    "rules": {
+        "groups": {
+            "$groupId": {
+                ".read": "$groupId.length >= 20",
+                ".write": "$groupId.length >= 20"
+            }
+        }
+    }
+}
