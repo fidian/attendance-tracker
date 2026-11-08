@@ -90,6 +90,39 @@ export const deserializeConnection = (hash: string): Connection | null => {
     return isConnection(connection) ? connection : null;
 };
 
+/**
+ * What to warn somebody about before a link moves their device.
+ *
+ * Built from what actually differs. A message saying "a different database"
+ * while naming the same host twice is worse than no message: it reads as
+ * noise, and the next real warning gets clicked through too.
+ */
+export const describeConnectionChange = (
+    next: Connection,
+    current: Connection
+): string => {
+    const host = (connection: Connection) =>
+        new URL(connection.databaseUrl).hostname;
+    const short = (connection: Connection) =>
+        `${connection.groupId.slice(0, 6)}...`;
+
+    if (next.databaseUrl !== current.databaseUrl) {
+        return (
+            `This link points at a different database:\n\n${host(next)}\n\n` +
+            `Attendance would be recorded there instead of ${host(current)}. ` +
+            'Only continue if you trust whoever sent it.\n\n' +
+            'Switch this device over?'
+        );
+    }
+
+    return (
+        'This link points at a different group in the same database:\n\n' +
+        `${short(next)} instead of ${short(current)}\n\n` +
+        'This device would stop seeing the events it has now. Only ' +
+        'continue if you trust whoever sent it.\n\nSwitch this device over?'
+    );
+};
+
 export class ConfigService {
     private _connection: Connection | null;
     private _listeners = new Set<ConfigListener>();

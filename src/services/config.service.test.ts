@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     ConfigService,
+    describeConnectionChange,
     deserializeConnection,
     GROUP_ID_PATTERN,
     isConnection,
@@ -305,5 +306,46 @@ describe('adopting a connection over an existing one', () => {
         expect(
             config.adoptFromHash(`#${serializeConnection(sameDbOtherGroup)}`)
         ).toBe(false);
+    });
+});
+
+/**
+ * A warning that says "different database" while naming the same host twice
+ * is worse than none: it reads as noise and teaches people to click through.
+ */
+describe('describeConnectionChange', () => {
+    const OTHER_DB = {
+        databaseUrl: 'https://someone-else-default-rtdb.firebaseio.com',
+        groupId: GROUP,
+    };
+    const OTHER_GROUP = { ...CONNECTION, groupId: 'QQQQQQQQQQQQQQQQQQQQQQ' };
+
+    it('names both hosts when the database differs', () => {
+        const text = describeConnectionChange(OTHER_DB, CONNECTION);
+
+        expect(text).toContain('different database');
+        expect(text).toContain('someone-else-default-rtdb.firebaseio.com');
+        expect(text).toContain('attendance-sample-default-rtdb.firebaseio.com');
+    });
+
+    it('says it is the same database when only the group differs', () => {
+        const text = describeConnectionChange(OTHER_GROUP, CONNECTION);
+
+        expect(text).toContain('different group in the same database');
+        expect(text).not.toContain('different database:');
+    });
+
+    it('never names one host twice', () => {
+        const text = describeConnectionChange(OTHER_GROUP, CONNECTION);
+        const host = 'attendance-sample-default-rtdb.firebaseio.com';
+
+        expect(text.split(host).length - 1).toBeLessThan(2);
+    });
+
+    it('shows something that tells the two groups apart', () => {
+        const text = describeConnectionChange(OTHER_GROUP, CONNECTION);
+
+        expect(text).toContain(OTHER_GROUP.groupId.slice(0, 6));
+        expect(text).toContain(CONNECTION.groupId.slice(0, 6));
     });
 });
