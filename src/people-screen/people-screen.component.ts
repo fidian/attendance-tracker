@@ -111,6 +111,90 @@ component(
                 cursor: default;
             }
 
+            /* The questions this roster asks, under the add box. */
+            .fields {
+                display: flex;
+                flex-direction: column;
+                gap: 0.4em;
+                flex: 0 0 auto;
+                padding: 0 0.8em 0.6em;
+            }
+
+            .fields label {
+                display: flex;
+                align-items: center;
+                gap: 0.5em;
+            }
+
+            .fields span {
+                flex: 0 0 7em;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                font-size: 0.95em;
+                opacity: 0.8;
+            }
+
+            .fields input {
+                flex: 1;
+                min-width: 0;
+                padding: 0.6em;
+                font-size: 1em;
+                font-family: inherit;
+                color: var(--fg-color);
+                background-color: var(--bg-color);
+                border: var(--control-border);
+                border-radius: 0.5em;
+            }
+
+            .edit label {
+                display: block;
+                margin-bottom: 0.3em;
+                font-weight: bold;
+            }
+
+            .edit input {
+                width: 100%;
+                box-sizing: border-box;
+                margin-bottom: 0.9em;
+                padding: 0.7em;
+                font-size: 1.05em;
+                font-family: inherit;
+                color: var(--fg-color);
+                background-color: var(--bg-color);
+                border: var(--control-border);
+                border-radius: 0.5em;
+            }
+
+            .edit .row {
+                display: flex;
+                gap: 0.5em;
+                margin-bottom: 1em;
+            }
+
+            .edit .row button {
+                flex: 1;
+                padding: 0.8em 1.1em;
+                font: inherit;
+                font-size: 1.05em;
+                color: var(--fg-color);
+                background-color: var(--button-bg-color);
+                border: var(--control-border);
+                border-radius: 0.5em;
+                cursor: pointer;
+            }
+
+            .edit .row button.primary {
+                color: var(--accent-fg-color);
+                background-color: var(--accent-color);
+                border-color: var(--accent-color);
+            }
+
+            .edit .row button:disabled {
+                opacity: 0.45;
+                cursor: default;
+            }
+
             .scroll {
                 flex: 1;
                 overflow-y: auto;
@@ -227,7 +311,7 @@ component(
                 <h1>{{ title(event) }}</h1>
             </header>
 
-            <div class="bar" *if="!anySelected(selected)">
+            <div class="bar" *if="showAdd(view, selected)">
                 <input
                     type="text"
                     autocomplete="off"
@@ -247,8 +331,33 @@ component(
                 </button>
             </div>
 
-            <div class="bar" *if="anySelected(selected)">
+            <div
+                class="fields"
+                *if="showNewFields(view, selected, fields, newName)"
+            >
+                <label *for="field of fields track field">
+                    <span>{{ field }}</span>
+                    <input
+                        type="text"
+                        autocomplete="off"
+                        enterkeyhint="done"
+                        placeholder="{{ field }}"
+                        .value="valueFor(field, newExtra)"
+                        @input="setNewExtra(field, $event.target.value)"
+                        @keydown.enter.prevent="addPerson()"
+                    />
+                </label>
+            </div>
+
+            <div class="bar" *if="showSelection(view, selected)">
                 <button @click="clearSelection()">Cancel</button>
+                <button
+                    *if="canEdit(selected)"
+                    @click="startEdit()"
+                    .disabled="busy"
+                >
+                    Edit
+                </button>
                 <button
                     class="danger"
                     @click="deleteSelected()"
@@ -261,7 +370,43 @@ component(
             <div class="scroll">
                 <p class="error" *if="error">{{ error }}</p>
 
-                <ul>
+                <div class="edit" *if="view === 'edit'">
+                    <label for="person-name">Name</label>
+                    <input
+                        id="person-name"
+                        type="text"
+                        autocomplete="off"
+                        autocapitalize="words"
+                        .value="editName"
+                        @input="setEditName($event.target.value)"
+                        @keydown.enter.prevent="saveEdit()"
+                    />
+
+                    <div *for="field of fields track field">
+                        <label for="person-{{ field }}">{{ field }}</label>
+                        <input
+                            id="person-{{ field }}"
+                            type="text"
+                            autocomplete="off"
+                            .value="valueFor(field, editExtra)"
+                            @input="setEditExtra(field, $event.target.value)"
+                            @keydown.enter.prevent="saveEdit()"
+                        />
+                    </div>
+
+                    <div class="row">
+                        <button @click="cancelEdit()">Cancel</button>
+                        <button
+                            class="primary"
+                            @click="saveEdit()"
+                            .disabled="!canSave(editName, busy)"
+                        >
+                            Save
+                        </button>
+                    </div>
+                </div>
+
+                <ul *if="view === 'list'">
                     <li *for="person of people track person.id">
                         <button
                             class="person"
@@ -283,10 +428,10 @@ component(
                     </li>
                 </ul>
 
-                <p class="empty" *if="loaded && !people.length">
+                <p class="empty" *if="showEmpty(view, loaded, people)">
                     Nobody here yet. Type a name above.
                 </p>
-                <p class="empty" *if="!loaded">Loading...</p>
+                <p class="empty" *if="showLoading(view, loaded)">Loading...</p>
             </div>
 
             <div class="toast" *if="toast" role="status">{{ toast }}</div>

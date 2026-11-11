@@ -101,6 +101,60 @@ export const forCopy = (people: Person[]): NewPerson[] =>
     }));
 
 /**
+ * The questions a person can be given answers to, in the order they are
+ * asked. The event's own `columns` lead, because that is the only record of
+ * the order the import had; object key order is not preserved on read, so a
+ * scan alone could never put them back.
+ *
+ * The scan exists for a roster that did not arrive through an import -- a
+ * restored backup, or a record written by an older build. Without it, an
+ * event whose people carry `Dept` but whose `columns` is empty would offer
+ * nowhere to type one.
+ */
+export const extraFields = (columns: string[], people: Person[]): string[] => {
+    const fields: string[] = [];
+    const seen = new Set<string>();
+
+    for (const column of columns) {
+        if (column && !seen.has(column)) {
+            seen.add(column);
+            fields.push(column);
+        }
+    }
+
+    const found = new Set<string>();
+
+    for (const person of people) {
+        for (const key of Object.keys(person.extra)) {
+            if (key && !seen.has(key)) {
+                found.add(key);
+            }
+        }
+    }
+
+    // Sorted, because the order they were read in means nothing.
+    return [...fields, ...[...found].sort()];
+};
+
+/** Blank answers are not worth storing, and read back the same either way. */
+export const trimExtra = (
+    fields: string[],
+    values: Record<string, string>
+): Record<string, string> => {
+    const extra: Record<string, string> = {};
+
+    for (const field of fields) {
+        const value = (values[field] || '').trim();
+
+        if (value) {
+            extra[field] = value;
+        }
+    }
+
+    return extra;
+};
+
+/**
  * Keeps the roster the screen is showing, updated one child at a time.
  *
  * This is where the live updates land, and it is pure so it can be tested
@@ -206,6 +260,28 @@ export class RosterService {
             this._path(eventId),
             fromPerson({ ...person, display })
         );
+    }
+
+    /**
+     * Edits who somebody is, never whether they are here. `present` is left
+     * out of the write on purpose: it belongs to the tap, and a form saved
+     * from a stale screen would otherwise undo somebody else's mark.
+     */
+    update(
+        eventId: string,
+        personId: string,
+        person: Pick<Person, 'display' | 'extra'>
+    ): Promise<void> {
+        const display = normalizeName(person.display);
+
+        if (!display) {
+            return Promise.reject(new Error('A person needs a name.'));
+        }
+
+        return this._firebaseService.writeMany(this._path(eventId, personId), {
+            display,
+            extra: person.extra,
+        });
     }
 
     /** One write, so the screen does not redraw once per person. */

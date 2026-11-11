@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
     byDisplay,
+    extraFields,
     forCopy,
     fromPerson,
     normalizeName,
     RosterTable,
     toPeople,
     toPerson,
+    trimExtra,
 } from './roster.service';
 import type { Person } from './roster.service';
 
@@ -208,5 +210,77 @@ describe('RosterTable', () => {
         table.clear();
 
         expect(table.size).toBe(0);
+    });
+});
+
+describe('extraFields', () => {
+    const person = (extra: Record<string, string>): Person => ({
+        id: 'p1',
+        display: 'Someone',
+        extra,
+        present: false,
+    });
+
+    it('keeps the order the event recorded', () => {
+        expect(extraFields(['First', 'Last', 'Dept'], [])).toEqual([
+            'First',
+            'Last',
+            'Dept',
+        ]);
+    });
+
+    it('finds a field the event never wrote down', () => {
+        // A restored backup, or a record from an older build.
+        expect(extraFields([], [person({ Dept: 'Law' })])).toEqual(['Dept']);
+    });
+
+    it('does not offer the same question twice', () => {
+        expect(
+            extraFields(['Dept'], [person({ Dept: 'Law' })])
+        ).toEqual(['Dept']);
+        expect(extraFields(['Dept', 'Dept'], [])).toEqual(['Dept']);
+    });
+
+    it('puts the recorded columns first and sorts what it found', () => {
+        expect(
+            extraFields(
+                ['Last'],
+                [person({ Zone: 'B', Last: 'Potter', Age: '12' })]
+            )
+        ).toEqual(['Last', 'Age', 'Zone']);
+    });
+
+    it('gathers fields across the whole roster', () => {
+        expect(
+            extraFields([], [person({ A: '1' }), person({ B: '2' })])
+        ).toEqual(['A', 'B']);
+    });
+
+    it('ignores a blank heading', () => {
+        expect(extraFields([''], [person({ '': 'x' })])).toEqual([]);
+    });
+});
+
+describe('trimExtra', () => {
+    it('keeps only the questions asked', () => {
+        expect(
+            trimExtra(['Dept'], { Dept: 'Law', Stale: 'ignored' })
+        ).toEqual({ Dept: 'Law' });
+    });
+
+    it('drops a blank answer rather than storing it', () => {
+        expect(trimExtra(['Dept', 'Age'], { Dept: '  ', Age: '12' })).toEqual({
+            Age: '12',
+        });
+    });
+
+    it('trims what it keeps', () => {
+        expect(trimExtra(['Dept'], { Dept: '  Law  ' })).toEqual({
+            Dept: 'Law',
+        });
+    });
+
+    it('is empty when nothing was typed', () => {
+        expect(trimExtra(['Dept'], {})).toEqual({});
     });
 });

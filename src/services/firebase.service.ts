@@ -124,15 +124,20 @@ export class FirebaseService {
         const changed = (s: DataSnapshot) =>
             handlers.changed(s.key as string, s.val());
         const removed = (s: DataSnapshot) => handlers.removed(s.key as string);
+        const ready = () => handlers.ready();
         onChildAdded(reference, added);
         onChildChanged(reference, changed);
         onChildRemoved(reference, removed);
-        onValue(reference, () => handlers.ready(), { onlyOnce: true });
+        onValue(reference, ready, { onlyOnce: true });
 
         return () => {
             off(reference, 'child_added', added);
             off(reference, 'child_changed', changed);
             off(reference, 'child_removed', removed);
+            // Detached by hand as well: `onlyOnce` removes it after it fires,
+            // but one that has not fired yet would outlive the watch and
+            // report an empty roster into a screen that has moved on.
+            off(reference, 'value', ready);
         };
     }
 

@@ -20,6 +20,13 @@ class RecordingFirebase {
     handlers: ChildHandlers | null = null;
     path = '';
     unwatched = false;
+    writes: { path: string; values: Record<string, unknown> }[] = [];
+
+    writeMany(path: string, values: Record<string, unknown>) {
+        this.writes.push({ path, values });
+
+        return Promise.resolve();
+    }
 
     watchChildren(path: string, handlers: ChildHandlers) {
         this.path = path;
@@ -98,5 +105,57 @@ describe('RosterService.watch', () => {
         start()();
 
         expect(firebase.unwatched).toBe(true);
+    });
+});
+
+describe('RosterService.update', () => {
+    let firebase: RecordingFirebase;
+    let roster: RosterService;
+
+    beforeEach(() => {
+        storage.clear();
+        const config = new ConfigService();
+        config.set(CONNECTION);
+        diOverride(ConfigService, config);
+        firebase = new RecordingFirebase();
+        diOverride(FirebaseService, firebase as unknown as FirebaseService);
+        roster = new RosterService();
+    });
+
+    it('writes to that one person', async () => {
+        await roster.update('e1', 'p1', { display: 'Ada', extra: {} });
+
+        expect(firebase.writes[0].path).toBe(
+            `groups/${CONNECTION.groupId}/roster/e1/p1`
+        );
+    });
+
+    /**
+     * The load-bearing one. `present` belongs to the tap; a form saved from a
+     * screen that was opened a minute ago must not undo somebody's mark.
+     */
+    it('never writes present', async () => {
+        await roster.update('e1', 'p1', {
+            display: 'Ada',
+            extra: { Dept: 'Law' },
+        });
+
+        expect(Object.keys(firebase.writes[0].values).sort()).toEqual([
+            'display',
+            'extra',
+        ]);
+    });
+
+    it('tidies the name the same way adding does', async () => {
+        await roster.update('e1', 'p1', { display: '  Ada   L.  ', extra: {} });
+
+        expect(firebase.writes[0].values.display).toBe('Ada L.');
+    });
+
+    it('refuses to empty a name', async () => {
+        await expect(
+            roster.update('e1', 'p1', { display: '   ', extra: {} })
+        ).rejects.toThrow(/needs a name/);
+        expect(firebase.writes).toEqual([]);
     });
 });

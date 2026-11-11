@@ -8,10 +8,14 @@ import { plural } from '../services/text';
 import { EventService, type AttendanceEvent } from '../services/event.service';
 import { NavigationService } from '../services/navigation.service';
 import {
+    extraFields,
     normalizeName,
     RosterService,
+    trimExtra,
     type Person,
 } from '../services/roster.service';
+
+export type PeopleView = 'list' | 'edit';
 
 const TOAST_MS = 4000;
 
@@ -24,15 +28,23 @@ export class PeopleScreenComponent {
     private _unwatch?: () => void;
 
     busy = false;
+    /** Who is being edited, and what has been typed so far. */
+    editExtra: Record<string, string> = {};
+    editId = '';
+    editName = '';
     error = '';
     event: AttendanceEvent | null = null;
     eventId = '';
+    /** The questions this roster asks, beyond the name. */
+    fields: string[] = [];
     loaded = false;
+    newExtra: Record<string, string> = {};
     newName = '';
     people: Person[] = [];
     /** Which people are ticked. Selecting swaps the add box for a delete. */
     selected: Record<string, true> = {};
     toast = '';
+    view: PeopleView = 'list';
 
     onInit() {
         // The same element is reused when the event changes underneath it,
@@ -57,17 +69,29 @@ export class PeopleScreenComponent {
         this.event = null;
         this.people = [];
         this.selected = {};
+        this.fields = [];
         this.loaded = false;
         this.error = '';
+        this.view = 'list';
+        this.newName = '';
+        this.newExtra = {};
         this._unwatch = this._rosterService.watch(eventId, people => {
             this.people = people;
             this.loaded = true;
             this._forgetMissing(people);
+            this._syncFields();
+
+            // Somebody removed them on another phone while this was open.
+            if (this.view === 'edit' && !people.some(p => p.id === this.editId)) {
+                this.view = 'list';
+                this._showToast('That person was removed on another device.');
+            }
         });
         this._eventService
             .find(eventId)
             .then(event => {
                 this.event = event;
+                this._syncFields();
             })
             .catch(error => {
                 this.error = this._message(error);
@@ -88,6 +112,55 @@ export class PeopleScreenComponent {
         this.selected = selected;
     }
 
+    /**
+     * The event's columns are the order of record; the roster is scanned so
+     * a field nobody wrote down is still offered. Both arrive asynchronously
+     * and in either order, so this runs on each.
+     */
+    private _syncFields() {
+        this.fields = extraFields(this.event?.columns || [], this.people);
+    }
+
+    hasFields(fields: string[]) {
+        return fields.length > 0;
+    }
+
+    showEmpty(view: PeopleView, loaded: boolean, people: Person[]) {
+        return view === 'list' && loaded && !people.length;
+    }
+
+    showLoading(view: PeopleView, loaded: boolean) {
+        return view === 'list' && !loaded;
+    }
+
+    showAdd(view: PeopleView, selected: Record<string, true>) {
+        return view === 'list' && !this.anySelected(selected);
+    }
+
+    showSelection(view: PeopleView, selected: Record<string, true>) {
+        return view === 'list' && this.anySelected(selected);
+    }
+
+    /**
+     * The questions appear once a name is being typed. Manage-people is also
+     * where you come to delete somebody, and three empty boxes above the list
+     * would push the names off a phone screen for everybody who is not adding.
+     */
+    showNewFields(
+        view: PeopleView,
+        selected: Record<string, true>,
+        fields: string[],
+        newName: string
+    ) {
+        return this.showAdd(view, selected) && !!fields.length && !!newName.trim();
+    }
+
+    /** Shared by both forms; a missing answer must read as empty, not as
+     * the word "undefined". */
+    valueFor(field: string, values: Record<string, string>) {
+        return values[field] || '';
+    }
+
     title(event: AttendanceEvent | null) {
         return event?.name || 'Roster';
     }
@@ -106,6 +179,11 @@ export class PeopleScreenComponent {
 
     anySelected(selected: Record<string, true>) {
         return this.selectedCount(selected) > 0;
+    }
+
+    /** Editing is for one person. Two ticked is a delete, not an edit. */
+    canEdit(selected: Record<string, true>) {
+        return this.selectedCount(selected) === 1;
     }
 
     toggleSelected(person: Person) {
@@ -129,15 +207,25 @@ export class PeopleScreenComponent {
         this.error = '';
     }
 
+    // A new object each time: a binding re-runs when a top-level identifier
+    // is assigned, and mutating this one in place would change nothing.
+    setNewExtra(field: string, text: string) {
+        this.newExtra = { ...this.newExtra, [field]: text };
+    }
+
+    setEditName(text: string) {
+        this.editName = text;
+        this.error = '';
+    }
+
+    setEditExtra(field: string, text: string) {
+        this.editExtra = { ...this.editExtra, [field]: text };
+    }
+
     canAdd(newName: string, busy: boolean) {
         return !!newName.trim() && !busy;
     }
 
-    /**
-     * A hand-added person carries no extra columns. Their row still exports,
-     * with those cells empty, because the event remembers the column order
-     * rather than each person doing so.
-     */
     async addPerson() {
         const display = normalizeName(this.newName);
 
@@ -154,17 +242,93 @@ export class PeopleScreenComponent {
         this.busy = true;
 
         try {
+            const extra = trimExtra(this.fields, this.newExtra);
+            await this._rememberFields();
             await this._rosterService.add(this.eventId, {
                 display,
-                extra: {},
+                extra,
                 present: false,
             });
             this.newName = '';
+            this.newExtra = {};
         } catch (error) {
             this.error = this._message(error);
         }
 
         this.busy = false;
+    }
+
+    /** Opens the form on the one ticked person. */
+    startEdit() {
+        const id = Object.keys(this.selected)[0];
+        const person = this.people.find(item => item.id === id);
+
+        if (!person || this.busy) {
+            return;
+        }
+
+        this.editId = person.id;
+        this.editName = person.display;
+        this.editExtra = { ...person.extra };
+        this.error = '';
+        this.view = 'edit';
+    }
+
+    canSave(editName: string, busy: boolean) {
+        return !!editName.trim() && !busy;
+    }
+
+    async saveEdit() {
+        const display = normalizeName(this.editName);
+
+        if (!display || !this.editId || this.busy) {
+            return;
+        }
+
+        this.busy = true;
+
+        try {
+            const extra = trimExtra(this.fields, this.editExtra);
+            await this._rememberFields();
+            await this._rosterService.update(this.eventId, this.editId, {
+                display,
+                extra,
+            });
+            this.selected = {};
+            this.view = 'list';
+            this._showToast('Saved.');
+        } catch (error) {
+            this.error = this._message(error);
+        }
+
+        this.busy = false;
+    }
+
+    cancelEdit() {
+        this.view = 'list';
+        this.error = '';
+    }
+
+    /**
+     * An answer is only exported if the event lists the question, so a field
+     * that was found by scanning rather than by import is written down the
+     * first time somebody adds or edits. Otherwise the value would be stored
+     * and then quietly left out of every export.
+     *
+     * The whole scan is recorded, not just the questions this one person
+     * answered: the others are asked of everybody already on the roster, and
+     * recording a subset would drop their answers from the next export.
+     */
+    private async _rememberFields() {
+        const columns = this.event?.columns || [];
+        const next = this.fields;
+
+        if (!this.event || next.length === columns.length) {
+            return;
+        }
+
+        await this._eventService.setColumns(this.eventId, next);
+        this.event = { ...this.event, columns: next };
     }
 
     async deleteSelected() {

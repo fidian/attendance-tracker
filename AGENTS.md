@@ -152,6 +152,17 @@ database before a release.
 - What counts as the same person, and the sort: `roster.service.ts`
   (`normalizeName`, `byDisplay`, which falls back to the id so two people
   called Sam never flicker).
+- Which questions a person can be given answers to: `roster.service.ts`
+  (`extraFields`). The event's `columns` lead because they are the only
+  record of the import's order; the roster is then scanned so an event whose
+  columns were never written still offers its fields, and what the scan finds
+  is sorted, since read order means nothing. `people-screen.controller.ts`
+  writes the result back to the event the first time somebody adds or edits,
+  because an answer to a question the event does not list is never exported.
+- What an edit may change: `roster.service.ts` (`update`), which writes
+  `display` and `extra` and deliberately leaves `present` out. Presence
+  belongs to the tap, and a form opened a minute ago must not undo somebody
+  else's mark.
 - What a pasted address or scanned code may mean: `config.service.ts`
   (`normalizeDatabaseUrl`, `deserializeConnection`, `newGroupId`).
 - How a sheet becomes people and back: `sheet.service.ts` (`rowsToPeople`,
