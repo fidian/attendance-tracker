@@ -14,12 +14,19 @@ import {
 
 export type SetupView = 'edit' | 'share' | 'scan';
 
+const NOTE_MS = 4000;
+
 export class SetupScreenComponent {
     private _configService = di(ConfigService);
+    private _noteTimer?: ReturnType<typeof setTimeout>;
 
     databaseUrl = '';
     docs = DOCS;
     error = '';
+    /** The box holding the link, so a failed copy can select it instead. */
+    linkBox?: HTMLInputElement;
+    /** Said briefly after a copy, so the button reports what happened. */
+    note = '';
     projectUrl = PROJECT_URL;
     /** True once this device has a connection, so there is a way back. */
     saved = false;
@@ -30,6 +37,10 @@ export class SetupScreenComponent {
         const connection = this._configService.get();
         this.saved = !!connection;
         this.databaseUrl = connection?.databaseUrl || '';
+    }
+
+    onDestroy() {
+        clearTimeout(this._noteTimer);
     }
 
     setDatabaseUrl(text: string) {
@@ -93,9 +104,41 @@ export class SetupScreenComponent {
 
     show(view: SetupView) {
         this.error = '';
+        this.note = '';
         this.shareLink =
             view === 'share' ? this._configService.shareUrl() || '' : '';
         this.view = view;
+    }
+
+    /**
+     * The same link the code carries, for a phone that cannot be pointed at
+     * a screen -- one in another room, or a camera that will not focus.
+     * Sending it is sending the key, which is why the warning above it says
+     * so and why the box is only filled while this view is open.
+     */
+    async copyLink() {
+        if (!this.shareLink) {
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(this.shareLink);
+            this._showNote('Link copied.');
+        } catch (_ignore) {
+            // No clipboard API, no permission, or an insecure context.
+            // Selecting it is the next best thing: it is already on screen,
+            // and the device's own copy command will take it from here.
+            this.linkBox?.select();
+            this._showNote('Selected — use your device\'s copy.');
+        }
+    }
+
+    private _showNote(message: string) {
+        clearTimeout(this._noteTimer);
+        this.note = message;
+        this._noteTimer = setTimeout(() => {
+            this.note = '';
+        }, NOTE_MS);
     }
 
     /**
@@ -108,6 +151,7 @@ export class SetupScreenComponent {
         this.databaseUrl = '';
         this.saved = false;
         this.shareLink = '';
+        this.note = '';
         this.view = 'edit';
     }
 

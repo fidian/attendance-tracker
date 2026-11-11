@@ -152,12 +152,20 @@ Setting up another phone
 ------------------------
 
 On a phone that is already working, open the menu, choose **Settings**, then
-**Share with another phone**. It shows a QR code.
+**Share with another phone**. It shows a QR code, and below it the same thing
+written out as a link.
 
 On the new phone, either point its ordinary camera at the code and open the
 link, or use **Scan** in the app. Either way it arrives already set up: the
 code carries both the database address and the group id, which is everything
 needed and the only place either of them is written down.
+
+When the other phone is not in the room, **Copy** puts that link on the
+clipboard to send. It is the same link the code encodes, so opening it does
+the same job — which also means sending it is sending the key, and anyone who
+reads the message on the way is set up too. A code held up between two people
+is seen by the two of them; a link lives in whatever carried it. Prefer the
+code when both phones are present.
 
 Who can see your data
 ---------------------

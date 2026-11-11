@@ -160,6 +160,32 @@ component(
                 height: auto;
             }
 
+            /* The link, for a phone that cannot be pointed at this screen. */
+            .link {
+                display: flex;
+                gap: 0.5em;
+                margin-bottom: 0.4em;
+            }
+
+            .link input {
+                flex: 1;
+                min-width: 0;
+                margin-bottom: 0;
+                /* Long and unbroken, so show the start rather than wrap it. */
+                font-family: monospace;
+                font-size: 0.9em;
+            }
+
+            .link button {
+                flex: 0 0 auto;
+            }
+
+            .note {
+                margin: 0 0 1.2em;
+                font-size: 0.95em;
+                opacity: 0.8;
+            }
+
             a {
                 color: var(--link-color);
             }
@@ -272,9 +298,10 @@ component(
                 <div *if="view === 'share'">
                     <p class="warn">
                         <strong>Treat this like a door key.</strong> Anybody
-                        who photographs it can read, change and delete
-                        everything — it carries the database address and your
-                        group. There is no way to take access back afterwards.
+                        who photographs the code, or is sent the link, can
+                        read, change and delete everything — both carry the
+                        database address and your group. There is no way to
+                        take access back afterwards.
                         <a
                             href="{{ docs.security }}"
                             target="_blank"
@@ -288,6 +315,20 @@ component(
                         <em>Scan a code</em> in the app there.
                     </p>
                     <qr-code class="qr" content="{{ shareLink }}"></qr-code>
+
+                    <p>Or send the same link, if that phone is not here:</p>
+                    <div class="link">
+                        <input
+                            #ref="linkBox"
+                            type="text"
+                            readonly
+                            aria-label="Setup link"
+                            .value="shareLink"
+                            @focus="$event.target.select()"
+                        />
+                        <button @click="copyLink()">Copy</button>
+                    </div>
+                    <p class="note" *if="note" role="status">{{ note }}</p>
 
                     <div class="row">
                         <button @click="show('edit')">Back</button>
