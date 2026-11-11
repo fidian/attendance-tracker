@@ -29,11 +29,16 @@ export default defineConfig({
             },
         },
         target: 'es2020',
-        minify: 'esbuild',
-    },
-    esbuild: {
-        // Fudgel and the services use a leading underscore for private members.
-        mangleProps: /^_/,
+        // Vite 8 minifies with Oxc; `esbuild` is deprecated here and now wants
+        // esbuild installed separately. There is deliberately no property
+        // mangling. The old `mangleProps: /^_/` cannot work under Rolldown,
+        // which only mangles properties for a single output chunk and this app
+        // has several, and it was not earning its keep anyway: dropping it
+        // grew the entry bundle by 3 kB raw but *shrank* it by 1.5 kB gzipped,
+        // because gzip does more with the repeated long names than mangling
+        // did. Over the wire, which is the only size that matters here, no
+        // mangling is the smaller build.
+        minify: 'oxc',
     },
     clearScreen: false,
     root: 'site',

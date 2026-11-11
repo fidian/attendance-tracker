@@ -7,7 +7,11 @@ import { plural } from '../services/text';
 import { EventService, type AttendanceEvent } from '../services/event.service';
 import { NavigationService } from '../services/navigation.service';
 import { OnlineService } from '../services/online.service';
-import { RosterService, type Person } from '../services/roster.service';
+import {
+    forCopy,
+    RosterService,
+    type Person,
+} from '../services/roster.service';
 import {
     reportToRows,
     rosterToRows,
@@ -238,7 +242,6 @@ export class EventScreenComponent {
                 `${this.event.name} (copy)`,
                 this.event.columns
             );
-            const { forCopy } = await import('../services/roster.service');
             await this._rosterService.replaceAll(id, forCopy(this.people));
             this._navigationService.go('event', id);
         } catch (error) {

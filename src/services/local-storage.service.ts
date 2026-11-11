@@ -17,8 +17,19 @@ class LocalStorageMock {
         this._store.set(key, value);
     }
 }
-export const storage =
-    typeof localStorage === 'undefined' ? new LocalStorageMock() : localStorage;
+/**
+ * `window` is checked first so that under Node nothing ever touches the
+ * `localStorage` global. Node 26 defines it as an experimental getter that
+ * warns on any access -- including `typeof` -- and returns undefined unless
+ * the process was started with `--localstorage-file`. The answer is the same
+ * either way, but asking quietly keeps a real warning visible in test output.
+ */
+const browserStorage =
+    typeof window !== 'undefined' && typeof localStorage !== 'undefined'
+        ? localStorage
+        : null;
+
+export const storage = browserStorage || new LocalStorageMock();
 
 export interface LocalStorageInterface<T> {
     getItem: () => T | null;

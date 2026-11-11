@@ -40,11 +40,11 @@
         "write-excel-file": "^4.1.1"
     },
     "devDependencies": {
-        "@types/node": "^26.6.2",
-        "@vite-pwa/assets-generator": "^1.0.2",
-        "typescript": "^5.9.3",
-        "vite": "^7.1.7",
-        "vitest": "^3.2.4"
+        "@types/node": "^26.6.6",
+        "@vite-pwa/assets-generator": "^2.0.0",
+        "typescript": "^7.0.2",
+        "vite": "^8.3.7",
+        "vitest": "^5.1.0"
     },
     "allowScripts": {
         "@firebase/util@1.15.3": true,
