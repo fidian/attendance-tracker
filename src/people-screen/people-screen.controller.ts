@@ -304,9 +304,17 @@ export class PeopleScreenComponent {
         this.busy = false;
     }
 
+    /**
+     * Nothing was written, so dropping the draft is the whole job. The person
+     * stays ticked, which puts Edit back within one tap of a change thought
+     * better of.
+     */
     cancelEdit() {
         this.view = 'list';
         this.error = '';
+        this.editId = '';
+        this.editName = '';
+        this.editExtra = {};
     }
 
     /**

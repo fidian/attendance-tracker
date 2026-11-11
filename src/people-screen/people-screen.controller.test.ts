@@ -92,6 +92,40 @@ describe('editing one person', () => {
         expect(subject.view).toBe('list');
     });
 
+    it('throws the draft away on cancel, leaving the roster alone', () => {
+        const subject = screen();
+        const original = person('p1', 'Ada L.', { Dept: 'Law' });
+        subject.busy = false;
+        subject.people = [original];
+        subject.selected = { p1: true };
+        subject.startEdit();
+        subject.setEditName('Someone Else');
+        subject.setEditExtra('Dept', 'Auror');
+        subject.cancelEdit();
+
+        expect(subject.view).toBe('list');
+        expect(subject.editName).toBe('');
+        expect(subject.editExtra).toEqual({});
+        expect(original.display, 'cancelling must not touch the roster').toBe(
+            'Ada L.'
+        );
+        expect(original.extra).toEqual({ Dept: 'Law' });
+    });
+
+    it('reopens on the stored person, not the abandoned draft', () => {
+        const subject = screen();
+        subject.busy = false;
+        subject.people = [person('p1', 'Ada L.', { Dept: 'Law' })];
+        subject.selected = { p1: true };
+        subject.startEdit();
+        subject.setEditName('Typo');
+        subject.cancelEdit();
+        subject.startEdit();
+
+        expect(subject.editName).toBe('Ada L.');
+        expect(subject.editExtra).toEqual({ Dept: 'Law' });
+    });
+
     it('needs a name to save', () => {
         expect(people.canSave('', false)).toBe(false);
         expect(people.canSave('   ', false)).toBe(false);
